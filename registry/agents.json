@@ -1,0 +1,8 @@
+{
+  "cyrano-001": {
+    "name": "Cyrano de Bergerac",
+    "endpoint": "https://localhost:8002",
+    "status": "approved",
+    "trust_badge_hash": "66dde1e9990719ccbb44a11f0699064fd1eb07336168febb9e9b0e9aeab3fa19"
+  }
+}

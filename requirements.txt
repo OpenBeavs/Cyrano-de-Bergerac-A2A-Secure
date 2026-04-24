@@ -1,0 +1,7 @@
+python-dotenv
+google-genai
+fastapi
+uvicorn
+a2a-sdk
+httpx
+cryptography
