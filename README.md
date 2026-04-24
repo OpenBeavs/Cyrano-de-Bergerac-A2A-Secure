@@ -179,3 +179,5 @@ Architecture/                   Design rationale and system documentation
 ## Upstream
 
 Forked from [Cyrano-de-Bergerac-A2A](https://github.com/jsweet8258/Cyrano-de-Bergerac-A2A). The upstream repo implements the same two-agent system without the trust infrastructure.
+
+James was here
