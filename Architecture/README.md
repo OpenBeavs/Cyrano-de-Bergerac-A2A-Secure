@@ -11,6 +11,10 @@ The documents here serve different purposes but overlap deliberately. A design d
 - [system-architecture.md](system-architecture.md) -- ASCII diagram of the four-entity system: Mock TLS CA, Agent Registry, Cyrano, and Chris. Shows the system topology with TLS connections, the pairing flow sequence, the post-pairing request flow, module structure, port allocation, the play metaphor, and key abstractions (A2A SDK, Infrastructure Trust Plane, CDB Services).
 - [system-architecture-mermaid.md](system-architecture-mermaid.md) -- The same architecture as Mermaid diagrams, for contexts that render them (GitHub, IDE preview).
 
+### Trust architecture
+
+- [trust-planes.md](trust-planes.md) -- The Trust Planes reference document. Defines the three-plane trust model (Infrastructure, Agent, User), the two questions each plane asks (identity and authority), supra-plane governance, boundary questions for hybrid entities, and the autonomy boundary between infrastructure and agents. This is the authoritative reference for the concept.
+
 ### Infrastructure Trust Plane
 
 - [z-archive/OpenBeavs - Infrastructure Trust Plane - Engineering Requirements - v2026-0423.md](z-archive/OpenBeavs%20-%20Infrastructure%20Trust%20Plane%20-%20Engineering%20Requirements%20-%20v2026-0423.md) -- Original pre-implementation specification. Describes the REST-based design that was later converted to pure A2A. Retained as a historical artifact; the current system is documented in How-Pairing-Works/.
@@ -44,4 +48,4 @@ A reader can enter at any level:
 
 ## Governing standards
 
-Documentation in this directory follows the Feynman Standard: if you cannot explain it plainly without loss of meaning, you do not yet understand it. The voice is that of a colleague sharing working knowledge. The structure is layered: code comments for the developer at work, these documents for the reader studying the design, CLAUDE.md for the agent or newcomer orienting to the project.
+Documentation in this directory follows the knowledge architecture guidelines in `Control/Systems-Knowledge/knowledge-architecture-guidelines.md` and the Feynman Standard in `Control/Coding-Standards/teaching-philosophy.md`. The voice is that of a colleague sharing working knowledge. The structure is layered: code comments for the developer at work, these documents for the reader studying the design, CLAUDE.md for the agent or newcomer orienting to the project.

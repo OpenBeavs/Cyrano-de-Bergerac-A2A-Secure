@@ -10,27 +10,21 @@ With this basic dynamic in place, this repo adds trust infrastructure: TLS for t
 
 ## Trust planes
 
-When one agent sends a message to another, three independent questions arise:
+When a user sends a message through an agent, and that agent accesses infrastructure services to produce a response, three independent trust concerns are active simultaneously. Each concern defines a trust plane. Each plane asks two questions: one about identity (who or what is this?) and one about authority (what is it allowed to do?).
 
-1. **Is this connection going to the right server?** Transport identity. Answered by TLS: the server presents a certificate signed by a trusted authority, proving it controls the endpoint.
-
-2. **Is this agent authorized by the organization?** Agent service identity. TLS cannot answer this question. Any server operator can obtain a valid TLS certificate. A server with a valid cert, a well-formed agent card, and a working LLM is indistinguishable from an authorized agent at the transport level. A separate authority, controlled by the organization, must record which agents it has vetted and provide a way for clients to verify that record.
-
-3. **Is this user allowed to use this agent?** User identity and authorization. Covers authentication (who is this human?) and access control (what are they permitted to do?).
-
-These questions are independent. A valid TLS connection says nothing about whether the organization authorized the agent. An authorized agent says nothing about whether the user has permission. A single request might need to satisfy all three, and it can fail on any one independently of the others.
-
-Each question defines a **trust plane**:
-
-| Plane | Question | Mechanism |
+| Plane | Identity | Authority |
 |-------|----------|-----------|
-| **Infrastructure Trust Plane** | Are these services genuine? | TLS (transport identity) + Agent Registry (agent service identity) |
-| **User Trust Plane** | Is this human who they claim to be? | Authentication via identity providers |
-| **Agent Trust Plane** | Is this user allowed to use this agent? | Per-user authorization and business rules |
+| **Infrastructure** | Is this service genuine? (TLS, Registry) | Does this agent have access to this resource? |
+| **Agent** | Is this agent who it claims to be? (Registry verification, pairing) | Does this user have permission to use this agent? |
+| **User** | Is this human who they claim to be? (Identity provider) | What actions can this user perform? |
 
-The word "plane" (not "layer") is deliberate. Layers imply vertical dependency, where one sits on top of another. Planes are independent dimensions that intersect. A single message passes through all three simultaneously.
+The authority question at each plane governs not only peer access within the plane but access from the plane above. The Infrastructure Plane gates what agents can do with services. The Agent Plane gates what users can do with agents. Each plane is a gatekeeper for the plane above it.
 
-**This repo implements the Infrastructure Trust Plane.** The User Trust Plane and Agent Trust Plane are documented here as architectural context; they are not implemented.
+The planes are independent in failure: a request can fail on any plane regardless of the others. A valid TLS connection says nothing about whether the organization authorized the agent. An authorized agent says nothing about whether the user has permission. All three planes are evaluated for every request; they do not form a sequential pipeline.
+
+We use "planes" (not "layers") for consistency, just as we use "pairing" (not "handshaking") for agent identity verification. For the full Trust Planes reference, including boundary questions and the autonomy distinction between infrastructure and agents, see `Architecture/trust-planes.md`.
+
+**This repo implements the Infrastructure Trust Plane.** The User and Agent Planes are documented as architectural context; they are not implemented.
 
 ## Why the Agent Registry exists alongside TLS
 
