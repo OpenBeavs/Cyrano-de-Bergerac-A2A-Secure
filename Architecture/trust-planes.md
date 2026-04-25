@@ -30,21 +30,27 @@ Each plane asks two questions. The first is about identity: *who (or what) is th
 
 The identity question is about verification: confirming that an entity is what it presents itself to be. The authority question is about permission: given a verified identity, what access is granted?
 
-### Supra-plane governance
+### How the planes relate: context production, not just gatekeeping
 
-The authority question at each plane governs not only peer access within the plane but access from the plane above.
+It would be overly simplistic to describe the relationship between planes as gatekeeping, where each plane merely permits or denies access from the plane above. Gatekeeping is one function, but it misses the mechanism that gives the system its power: each plane actively produces the trust context that gives adjacent planes their meaning.
 
-- The **Infrastructure Plane** governs what agents can do with infrastructure services. An agent's identity may be verified (agent-plane concern), but whether that agent may access a specific MCP server, LLM, or database is an infrastructure-plane authorization decision.
+**Each plane is a producer of trust context for its neighbors.**
 
-- The **Agent Plane** governs what users can do with agents. A user's identity may be verified (user-plane concern), but whether that user may invoke a specific agent, retrieve specific information, or perform a specific action is an agent-plane authorization decision.
+- The **User Plane** produces verified identity claims. The Authentication Agent verifies a human's identity through an identity provider and issues a token attesting to that identity. Without this work, the Agent Plane has no basis for authorization decisions. An agent cannot answer "does this user have permission?" if no plane has answered "who is this user?" The User Plane's output is what makes agent-level authorization meaningful.
 
-This produces a directional governance relationship: the Infrastructure Plane gates agents; the Agent Plane gates users. Each plane is a gatekeeper for the plane above it.
+- The **Agent Plane** produces authorization context. An agent receives verified identity claims from the User Plane, checks permissions (possibly via an Authorization Agent), and makes an authorization decision. Without this work, the user's verified identity has no effect: knowing who someone is means nothing if no agent enforces what that identity permits. The Agent Plane's output is what gives user identity its operational meaning.
 
-### Independent in failure, directional in governance
+- The **Infrastructure Plane** produces verified service identity context. The Registry defines which agents are authorized; TLS verifies transport identity. Without this work, the Agent Plane has no basis for knowing whether the agent at the endpoint is genuine. The Infrastructure Plane's output is what makes agent identity verification possible.
 
-A request can fail on any plane independently of the others. A valid TLS connection says nothing about whether the organization authorized the agent. An authorized agent says nothing about whether the user has permission. An authenticated user says nothing about whether the infrastructure service is genuine. The planes do not depend on each other for their verdicts.
+The original Mermaid diagram (2025-11-12) illustrates this directly. It shows actors within each plane doing the work that produces the context consumed by actors in adjacent planes: the Authentication Agent issues User Identity Tokens that flow into the Agent Plane; the Registry defines trusted agents that the Agent Plane relies on; the Agent Plane's authorization decisions determine what infrastructure resources the agent may access on the user's behalf.
 
-At the same time, the authority policies are directional. The Infrastructure Plane's authorization policies answer questions about agent access. The Agent Plane's authorization policies answer questions about user access. This directionality is about who governs whom, not about processing order. All three planes are evaluated for every request; they do not form a sequential pipeline.
+**Governance follows from context production.** The authority question at each plane governs not only peer access within the plane but access from the plane above. The Infrastructure Plane governs what agents can do with infrastructure services. The Agent Plane governs what users can do with agents. This directional governance is a consequence of which plane produces the context that the next plane consumes: you govern access to the context you produce.
+
+### Independent in failure
+
+A request can fail on any plane independently of the others. A valid TLS connection says nothing about whether the organization authorized the agent. An authorized agent says nothing about whether the user has permission. An authenticated user says nothing about whether the infrastructure service is genuine.
+
+The planes produce context for each other, but they do not depend on each other for their verdicts. All three are evaluated for every request; they do not form a sequential pipeline. A plane may lack context from an adjacent plane (e.g., the Agent Plane has no user identity claims because the User Plane has not authenticated anyone). In that case, the Agent Plane still renders a verdict: it may deny access, grant anonymous access, or apply a default policy. The absence of context from one plane is a condition the other planes handle, not a failure that propagates.
 
 ## Terminology: why "planes"
 
