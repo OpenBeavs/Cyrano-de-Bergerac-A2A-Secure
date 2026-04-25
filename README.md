@@ -2,53 +2,69 @@
 
 A two-agent system demonstrating Agent-to-Agent (A2A) communication with a full Infrastructure Trust Plane. Chris (CLI client, no LLM) talks to Cyrano (A2A server, LLM) over HTTPS, but only after verifying through the Agent Registry that Cyrano is an authorized agent.
 
-The system mirrors the play's central dynamic: Chris faces the audience, Cyrano composes the words from the shadows. What this fork adds is the trust infrastructure that makes the connection verifiable.
+The system mirrors the central dynamic of Rostand's *Cyrano de Bergerac* (1897).
+
+In the play, Chris (Christian) speaks with Roxanne while Cyrano composes Chris's words from the shadows. In this two-agent system, Chris is a CLI agent that speaks with the user, who stands in for Roxanne. When Chris receives a message, Chris passes it to Cyrano for a response.
+
+With this basic dynamic in place, this repo adds trust infrastructure: TLS for transport security, and an Agent Registry for agent verification.
 
 ## Trust planes
 
-The OpenBeavs security architecture organizes trust into three independent planes. Each plane addresses a different question, and a request can fail on any plane independently of the others:
+When one agent sends a message to another, three independent questions arise:
 
-- **Infrastructure Trust Plane** -- Are these services genuine? Covers transport identity (TLS: is this connection going to the right server?) and agent service identity (Agent Registry: is this agent authorized by OSU?). This is what this repo builds.
-- **User Trust Plane** -- Is this human who they claim to be? Covers authentication via identity providers (e.g., ONID/Microsoft at OSU). Not implemented in this repo.
-- **Agent Trust Plane** -- Is this user allowed to use this agent? Covers per-user authorization, access control, and business rules enforced by individual agents. Not implemented in this repo.
+1. **Is this connection going to the right server?** Transport identity. Answered by TLS: the server presents a certificate signed by a trusted authority, proving it controls the endpoint.
 
-The planes are not a stack where one sits on top of another. They are orthogonal concerns that intersect: a single message might need to satisfy all three simultaneously. The word "plane" (not "layer") reflects this. Layers imply vertical dependency. Planes imply independent dimensions.
+2. **Is this agent authorized by the organization?** Agent service identity. TLS cannot answer this question. Any server operator can obtain a valid TLS certificate. A server with a valid cert, a well-formed agent card, and a working LLM is indistinguishable from an authorized agent at the transport level. A separate authority, controlled by the organization, must record which agents it has vetted and provide a way for clients to verify that record.
 
-This repo is a proof of concept for the Infrastructure Trust Plane. The other two planes are where production OpenBeavs adds human authentication and per-user authorization.
+3. **Is this user allowed to use this agent?** User identity and authorization. Covers authentication (who is this human?) and access control (what are they permitted to do?).
 
-## What this repo is and how it relates to production
+These questions are independent. A valid TLS connection says nothing about whether the organization authorized the agent. An authorized agent says nothing about whether the user has permission. A single request might need to satisfy all three, and it can fail on any one independently of the others.
 
-This is a teaching repository. It implements the production security architecture for OpenBeavs agent pairing, running locally on one machine. The design is not a simulation or a simplified sketch. It is the real protocol, the real trust model, and the real separation of concerns, built to run on localhost so that every mechanism is visible, testable, and understandable.
+Each question defines a **trust plane**:
 
-**What is identical to production:**
+| Plane | Question | Mechanism |
+|-------|----------|-----------|
+| **Infrastructure Trust Plane** | Are these services genuine? | TLS (transport identity) + Agent Registry (agent service identity) |
+| **User Trust Plane** | Is this human who they claim to be? | Authentication via identity providers |
+| **Agent Trust Plane** | Is this user allowed to use this agent? | Per-user authorization and business rules |
 
-- **The Agent Registry and its role.** The Registry is a standalone service that stores agent records, mediates pairing challenges, and issues signed assertions. In production, this service runs in Google Cloud behind a load balancer. Here it runs on localhost:8003. The API surface, the data model, and the pairing protocol are the same.
+The word "plane" (not "layer") is deliberate. Layers imply vertical dependency, where one sits on top of another. Planes are independent dimensions that intersect. A single message passes through all three simultaneously.
 
-- **The pairing protocol.** The challenge-response sequence, the Trust Badge verification, the signed assertion, and the client-side verification are all production mechanisms. The three-party handshake (Chris initiates, Cyrano proves to Registry, Registry vouches to Chris) exists to keep the Trust Badge out of Chris's hands. That constraint applies identically in production.
-
-- **The trust model.** Two independent authority structures operate in parallel: a TLS CA for transport identity, and the Agent Registry for agent service identity. Chris requires both. This separation exists because TLS CAs are shared global infrastructure that OSU does not control. That fact does not change between development and production.
-
-- **HMAC-SHA256 assertion signing.** The proof of concept uses symmetric HMAC, where the Registry and Chris share the same key. Production would use asymmetric signatures (RS256 or Ed25519) so the verification key can be distributed publicly. The assertion format, the fields signed, and the verification logic are otherwise the same. Swapping HMAC for asymmetric signatures is a key management change, not an architectural one.
-
-- **Failure behavior.** Chris refuses to proceed when the agent is unknown, unapproved, when the Trust Badge is wrong, or when the assertion is invalid or expired. These are production failure modes. The error messages and exit behavior are what a production client would do.
-
-**What differs from production:**
-
-- **The Mock TLS CA.** This is the one component that does not exist in production. In production, TLS certificates come from commercial TLS certificate authorities: Let's Encrypt, DigiCert, Google Trust Services, or whatever TLS CA the organization uses. Those CAs verify domain ownership and issue certificates that browsers and clients already trust. The Mock TLS CA stands in for that infrastructure. It generates a local root certificate and issues server certs signed by it, so that every TLS connection in the system follows the correct verification path (client checks cert, cert chains to trusted root) rather than skipping verification. The Mock TLS CA teaches the right trust model; it just anchors it in a local root instead of a public one.
-
-- **Localhost instead of DNS.** All services run on localhost with different ports. In production, the Registry, Cyrano, and Chris would be separate hosts with real domain names. The certificates would have SANs matching those domains instead of `localhost` and `127.0.0.1`.
-
-- **JSON file instead of a database.** The Registry stores agent records in a JSON file loaded at startup. Production would use a database with CRUD operations, audit logging, and access controls. The data model (agent ID, endpoint, status, Trust Badge hash) is the same.
-
-- **Single Cyrano instance.** Production OpenBeavs supports many Cyrano agents, each owned by a different OSU unit. This repo has one.
-
-The distance from this repo to production is infrastructure, not architecture. The security model, the protocol, the separation of trust planes, and the pairing mechanism do not change. What changes is where the services run, who issues the TLS certificates, and how the Registry stores its data.
+**This repo implements the Infrastructure Trust Plane.** The User Trust Plane and Agent Trust Plane are documented here as architectural context; they are not implemented.
 
 ## Why the Agent Registry exists alongside TLS
 
-TLS certificate authorities are external to OSU. Any server operator can obtain a valid TLS certificate. A server with a valid cert, a well-formed agent card, and a working LLM is indistinguishable from an OSU-authorized agent at the transport level. TLS answers "am I talking to the server at this endpoint?" It does not answer "did OSU authorize this agent?"
+TLS certificate authorities are external to any single organization. Any server operator can obtain a valid TLS certificate. TLS answers "am I talking to the server at this endpoint?" It does not answer "did this organization authorize this agent?"
 
-The Agent Registry performs the same structural function for agent service identity that a TLS certificate authority performs for transport identity, but one level up: it is the authority OSU controls that decides which agents are authorized, records that decision, and issues short-lived assertions that Chris can verify. Chris requires both a valid TLS connection and a valid Registry assertion before routing any user messages.
+The Agent Registry fills this gap. It performs the same structural function for agent service identity that a TLS CA performs for transport identity: it is the authority the organization controls that decides which agents are authorized, records that decision, and issues short-lived assertions that clients can verify. Chris requires both a valid TLS connection and a valid Registry assertion before routing any user messages.
+
+## Distance to production
+
+This is a teaching repository and a proof of concept for the Infrastructure Trust Plane. It implements a production trust architecture for agent pairing, running locally on one machine so that every mechanism is visible, testable, and understandable.
+
+**What is production-grade:**
+
+- **The Agent Registry and its role.** The Registry is a standalone service that stores agent records, mediates pairing challenges, and issues signed assertions. The API surface, the data model, and the pairing protocol are production mechanisms. In production, this service runs behind a load balancer; here it runs on localhost:8003.
+
+- **The pairing protocol.** The challenge-response sequence, the Trust Badge verification, the signed assertion, and the client-side verification are all production mechanisms. The three-party handshake (Chris initiates, Cyrano proves to Registry, Registry vouches to Chris) exists to keep the Trust Badge out of Chris's hands. That constraint applies identically in production.
+
+- **The trust model.** Two independent authority structures operate in parallel: a TLS CA for transport identity, and the Agent Registry for agent service identity. Chris requires both. This separation exists because TLS CAs are shared global infrastructure that no single organization controls.
+
+- **HMAC-SHA256 assertion signing.** The proof of concept uses symmetric HMAC, where the Registry and Chris share the same key. Production would use asymmetric signatures (RS256 or Ed25519) so the verification key can be distributed publicly. The assertion format, the fields signed, and the verification logic are otherwise the same. Swapping HMAC for asymmetric signatures is a key management change, not an architectural one.
+
+- **Failure behavior.** Chris refuses to proceed when the agent is unknown, unapproved, when the Trust Badge is wrong, or when the assertion is invalid or expired. These are production failure modes.
+
+**What differs from production:**
+
+- **The Mock TLS CA.** In production, TLS certificates come from commercial certificate authorities (Let's Encrypt, DigiCert, Google Trust Services). The Mock TLS CA stands in for that infrastructure. It generates a local root certificate and issues server certs signed by it, so that every TLS connection follows the correct verification path rather than skipping verification. The Mock TLS CA teaches the right trust model; it anchors trust in a local root instead of a public one.
+
+- **Localhost instead of DNS.** All services run on localhost with different ports. Production would use separate hosts with real domain names.
+
+- **JSON file instead of a database.** The Registry stores agent records in a JSON file. Production would use a database with CRUD operations, audit logging, and access controls. The data model (agent ID, endpoint, status, Trust Badge hash) is the same.
+
+- **Single Cyrano instance.** A production deployment would support many agents, each owned by a different organizational unit. This repo has one.
+
+The distance from this repo to production is infrastructure, not architecture.
 
 ## Architecture
 
@@ -79,7 +95,7 @@ Four entities, all communicating over TLS:
 
 If any step fails, Chris prints a specific error and exits.
 
-## Setup and Running
+## Setup and running
 
 ### Step 0: Generate certificates and trust credentials
 
@@ -105,9 +121,9 @@ cp .env.example .env
 
 Edit `.env` and fill in:
 
-- `GEMINI_API_KEY` -- your Gemini API key (get one at https://aistudio.google.com/apikey)
-- `CYRANO_TRUST_BADGE` -- copy the value from `certs/cyrano_trust_badge.txt`
-- `CHRIS_CREDENTIAL` -- copy the value from `certs/chris_credential.txt`
+- `GEMINI_API_KEY`: your Gemini API key (get one at https://aistudio.google.com/apikey)
+- `CYRANO_TRUST_BADGE`: copy the value from `certs/cyrano_trust_badge.txt`
+- `CHRIS_CREDENTIAL`: copy the value from `certs/chris_credential.txt`
 
 The remaining values have sensible defaults. See `.env.example` for the full list.
 
@@ -153,8 +169,8 @@ python3 main.py chat cyrano-001
 
 With the Registry and Cyrano running:
 
-- **Unknown agent:** `python3 main.py chat fake-agent` -- prints "Agent not found" and exits.
-- **Wrong Trust Badge:** Change `CYRANO_TRUST_BADGE` in `.env` to a wrong value, restart Cyrano, run `python3 main.py chat` -- prints "pairing verification failed" and exits.
+- **Unknown agent:** `python3 main.py chat fake-agent` prints "Agent not found" and exits.
+- **Wrong Trust Badge:** Change `CYRANO_TRUST_BADGE` in `.env` to a wrong value, restart Cyrano, run `python3 main.py chat`. Prints "pairing verification failed" and exits.
 
 ## Key files
 
@@ -174,15 +190,13 @@ Architecture/                   Design rationale and system documentation
 
 ## Design documents
 
-- `Architecture/How-Pairing-Works/` -- per-entity pairing documentation: overview, registry builders, chris builders, cyrano builders, and a welcome package for external teams
-- `Architecture/z-archive/OpenBeavs - Infrastructure Trust Plane - Engineering Requirements - v2026-0423.md` -- original pre-implementation specification (archived; current system documented in How-Pairing-Works/)
-- `Architecture/system-architecture.md` -- system topology, module structure, credential provenance, key abstractions
-- `Architecture/ORIGINS.md` -- the literary metaphor and why Chris is the interesting design element
-- `Architecture/llm-voice-and-context.md` -- voice service and context compaction design
-- `a2a_trust_pairing/README.md` -- API reference for the portable pairing module
+- `Architecture/How-Pairing-Works/`: per-entity pairing documentation (overview, registry builders, chris builders, cyrano builders, and a welcome package for external teams)
+- `Architecture/z-archive/`: original pre-implementation specification (archived; current system documented in How-Pairing-Works/)
+- `Architecture/system-architecture.md`: system topology, module structure, credential provenance, key abstractions
+- `Architecture/ORIGINS.md`: the literary metaphor and why Chris is the interesting design element
+- `Architecture/llm-voice-and-context.md`: voice service and context compaction design
+- `a2a_trust_pairing/README.md`: API reference for the portable pairing module
 
 ## Upstream
 
 Forked from [Cyrano-de-Bergerac-A2A](https://github.com/jsweet8258/Cyrano-de-Bergerac-A2A). The upstream repo implements the same two-agent system without the trust infrastructure.
-
-James was here
