@@ -20,6 +20,7 @@ Three processes plus a setup-time artifact (Mock TLS CA). Chris runs as a CLI pr
 │    cyrano.crt / .key        Cyrano server certificate           │
 │    cyrano_trust_badge.txt   Shared secret (Cyrano ↔ Registry)  │
 │    registry_signing.key     HMAC key (Registry ↔ Chris)        │
+│    chris_credential.txt     Shared secret (Chris ↔ Registry)   │
 └─────────────────────────────────────────────────────────────────┘
 
 ┌─────────────────────────────────────────────────────────────────┐
@@ -61,7 +62,7 @@ Three processes plus a setup-time artifact (Mock TLS CA). Chris runs as a CLI pr
 │  │                                                           │  │
 │  │  Cyrano (A2A HTTPS server, uvicorn :8002)                 │  │
 │  │  AgentExecutor (a2a-sdk)                                  │  │
-│  │  $CYRANO_MODEL (gemini-3.1-pro-preview)                   │  │
+│  │  $CYRANO_MODEL (gemini-2.5-flash)                          │  │
 │  │                                                           │  │
 │  │  The hidden wordsmith. Crafts eloquent replies.           │  │
 │  │  voice.llm_call() → Gemini API (audited)                  │  │
@@ -94,7 +95,8 @@ Before any user messages flow, Chris executes the pairing protocol. The Agent Re
 ```
  Chris (CLI)                    Registry (:8003)               Cyrano (:8002)
   │                                │                               │
-  │  1. GET /agents/{agent_id}     │                               │
+  │  1. A2A: agent-lookup           │                               │
+  │     {agent_id, chris_credential}│                               │
   │───────────────────────────────▶│                               │
   │  agent record (endpoint,       │                               │
   │  status)                       │                               │
@@ -103,8 +105,8 @@ Before any user messages flow, Chris executes the pairing protocol. The Agent Re
   │  [Check: status is approved    │                               │
   │   or provisional]              │                               │
   │                                │                               │
-  │  2. POST /pairing/challenge    │                               │
-  │     {agent_id}                 │                               │
+  │  2. A2A: pairing-challenge     │                               │
+  │     {agent_id, chris_credential}│                               │
   │───────────────────────────────▶│                               │
   │  challenge_token               │                               │
   │◀───────────────────────────────│                               │
@@ -113,7 +115,7 @@ Before any user messages flow, Chris executes the pairing protocol. The Agent Re
   │     {challenge_token}          │                               │
   │───────────────────────────────────────────────────────────────▶│
   │                                │                               │
-  │                                │  4. POST /pairing/verify      │
+  │                                │  4. A2A: pairing-verify       │
   │                                │     {agent_id,                │
   │                                │      challenge_token,         │
   │                                │      trust_badge}             │
@@ -174,32 +176,40 @@ Every user message follows the same path. Chris sends to Cyrano over the already
   ├── generate_ca()           → ca.crt, ca.key
   ├── generate_server_cert()  → {registry,cyrano}.{crt,key}
   └── generate_trust_credentials()
-       → cyrano_trust_badge.txt, registry_signing.key
+       → cyrano_trust_badge.txt, registry_signing.key,
+         chris_credential.txt
        → updates registry/agents.json
 
  registry/agent_registry.py
-  ├── FastAPI HTTPS app (uvicorn :8003)
-  ├── GET /agents/{agent_id}      → agent record
-  ├── POST /pairing/challenge     → challenge token
-  ├── POST /pairing/verify        → signed pairing assertion
-  └── agents.json                 → agent records (JSON file)
+  ├── A2A service (RegistryExecutor, AgentCard, uvicorn :8003)
+  ├── A2A skill: agent-lookup       → agent record
+  ├── A2A skill: pairing-challenge  → challenge token
+  ├── A2A skill: pairing-verify     → signed pairing assertion
+  ├── _authenticate_chris()         → per-request credential check
+  └── agents.json                   → agent + client records (JSON file)
 
- agents/chris.py
-  ├── _run_pairing()       → full pairing protocol
-  │     query registry → challenge → send to cyrano → verify assertion
-  ├── _verify_assertion()  → HMAC signature, agent_id, expiration
+ a2a_trust_pairing/
+  ├── initiator.py
+  │     initiate_pairing()          → full mediated pairing flow
+  │     bootstrap_authenticate()    → Chris credential validation
+  ├── responder.py
+  │     mount_pairing_responder()   → adds /pairing/respond to any app
+  └── verification.py
+        verify_assertion()          → HMAC signature, agent_id, expiration
+
+ chris/chris.py
+  ├── _load_verify_key()   → HMAC key from file
   ├── _send_message()      → A2A SendMessageRequest with context_id
-  ├── run_chat()           → pairing then CLI input loop
+  ├── run_chat()           → pairing (via a2a_trust_pairing) then CLI loop
   └── main()               → asyncio.run(run_chat())
 
- agents/cyrano.py
+ cyrano/cyrano.py
   ├── CyranoExecutor(AgentExecutor)
   │     execute() → voice.llm_call() + ConversationContext
-  ├── POST /pairing/respond
-  │     receives challenge → proves to registry → returns assertion
   ├── AgentCard (name, capabilities, skills, https URL)
   ├── DefaultRequestHandler + InMemoryTaskStore
-  └── a2a_app = A2AFastAPIApplication(...).build()
+  ├── a2a_app = A2AFastAPIApplication(...).build()
+  └── mount_pairing_responder() → /pairing/respond via a2a_trust_pairing
 
  services/llm_voice_context/
   ├── voice.py
@@ -434,6 +444,11 @@ The Infrastructure Trust Plane uses three independent credentials. They serve di
 │      the Registry and Chris. The Registry signs pairing         │
 │      assertions with it; Chris verifies them. Unrelated to      │
 │      TLS or the Trust Badge.                                    │
+│                                                                 │
+│   4. Chris credential (chris_credential.txt). Shared between    │
+│      Chris and the Registry. Chris presents it with every       │
+│      request; the Registry verifies the hash. Guards against    │
+│      a Fake Chris exploiting the network boundary.              │
 ├─────────────────────────────────────────────────────────────────┤
 │ Pairing assertion (JSON, HMAC-signed)                           │
 │   Short-lived token: agent_id, issued_at, expires_at,           │

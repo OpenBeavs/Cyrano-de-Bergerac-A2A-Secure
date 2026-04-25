@@ -344,4 +344,4 @@ Criterion 6 is the Feynman Standard applied to the project: the knowledge archit
 
 ## File placement
 
-This document lives in `Architecture/` alongside the existing system architecture documents. It governs the implementation work for the Infrastructure Trust Plane proof of concept.
+This document lives in `Architecture/` alongside the existing system architecture documents. It governs the implementation work for the Infrastructure Trust Plane proof of concept. Implementation plans, once written, belong in `Control/`.

@@ -97,7 +97,7 @@ def serve_cyrano():
         sys.exit(1)
 
     print("  Loading Cyrano ...", end=" ", flush=True)
-    from agents.cyrano import a2a_app
+    from cyrano.cyrano import a2a_app
     print("done.")
     print()
 
@@ -133,7 +133,7 @@ def run_chat():
     print("  ─────────────────────────────────────────────────────────────────────")
     print()
 
-    from agents.chris import main as chris_main
+    from chris.chris import main as chris_main
     chris_main()
 
 

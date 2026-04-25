@@ -10,7 +10,7 @@ Three processes plus a setup-time artifact (Mock TLS CA). All connections use TL
 ```mermaid
 graph TD
     subgraph Setup["Setup Time -- python3 scripts/mock_ca.py"]
-        MockCA["Mock TLS CA<br/>ca.crt, ca.key<br/>registry.crt, cyrano.crt<br/>cyrano_trust_badge.txt<br/>registry_signing.key"]
+        MockCA["Mock TLS CA<br/>ca.crt, ca.key<br/>registry.crt, cyrano.crt<br/>cyrano_trust_badge.txt<br/>registry_signing.key<br/>chris_credential.txt"]
     end
 
     subgraph P1["Process 1 -- python3 main.py chat"]
@@ -42,17 +42,17 @@ sequenceDiagram
     participant Registry as Agent Registry<br/>(:8003)
     participant Cyrano as Cyrano<br/>(:8002)
 
-    Chris->>Registry: 1. GET /agents/{agent_id}
+    Chris->>Registry: 1. A2A: agent-lookup {agent_id, chris_credential}
     Registry-->>Chris: agent record (endpoint, status)
 
     Note over Chris: Check: status is approved<br/>or provisional
 
-    Chris->>Registry: 2. POST /pairing/challenge {agent_id}
+    Chris->>Registry: 2. A2A: pairing-challenge {agent_id, chris_credential}
     Registry-->>Chris: challenge_token
 
     Chris->>Cyrano: 3. POST /pairing/respond {challenge_token}
 
-    Cyrano->>Registry: 4. POST /pairing/verify {agent_id, challenge_token, trust_badge}
+    Cyrano->>Registry: 4. A2A: pairing-verify {agent_id, challenge_token, trust_badge}
 
     Note over Registry: Validate badge, token,<br/>agent status
 
@@ -102,23 +102,28 @@ graph TD
     end
 
     subgraph "registry/agent_registry.py"
-        RegApp["FastAPI HTTPS :8003"]
-        RegAgents["GET /agents/{id}"]
-        RegChallenge["POST /pairing/challenge"]
-        RegVerify["POST /pairing/verify"]
+        RegApp["A2A service (RegistryExecutor, :8003)"]
+        RegLookup["A2A skill: agent-lookup"]
+        RegChallenge["A2A skill: pairing-challenge"]
+        RegVerify["A2A skill: pairing-verify"]
+        RegAuth["_authenticate_chris()"]
         RegJSON["agents.json"]
     end
 
-    subgraph "agents/chris.py"
-        ChrisPairing["_run_pairing()<br/>query → challenge → send → verify"]
-        ChrisVerify["_verify_assertion()<br/>HMAC signature, agent_id, expiration"]
-        ChrisSend["_send_message()<br/>SendMessageRequest + context_id"]
-        ChrisLoop["run_chat()<br/>pairing then CLI input loop"]
+    subgraph "a2a_trust_pairing/"
+        Initiator["initiator.py<br/>initiate_pairing()<br/>bootstrap_authenticate()"]
+        Responder["responder.py<br/>mount_pairing_responder()"]
+        Verification["verification.py<br/>verify_assertion()"]
     end
 
-    subgraph "agents/cyrano.py"
+    subgraph "chris/chris.py"
+        ChrisSend["_send_message()<br/>SendMessageRequest + context_id"]
+        ChrisLoop["run_chat()<br/>pairing (via a2a_trust_pairing) then CLI loop"]
+    end
+
+    subgraph "cyrano/cyrano.py"
         CyranoExec["CyranoExecutor<br/>(AgentExecutor)"]
-        CyranoPairing["POST /pairing/respond<br/>challenge → prove → relay"]
+        CyranoPairing["mount_pairing_responder()<br/>POST /pairing/respond"]
         CyranoCard["AgentCard<br/>name, capabilities, skills, https URL"]
         CyranoApp["a2a_app<br/>A2AFastAPIApplication"]
     end
@@ -135,9 +140,9 @@ graph TD
         MainChat["chat → Chris CLI with pairing"]
     end
 
-    ChrisPairing -->|"TLS"| RegChallenge
-    ChrisPairing -->|"TLS"| CyranoPairing
-    CyranoPairing -->|"TLS"| RegVerify
+    Initiator -->|"A2A TLS"| RegChallenge
+    Initiator -->|"TLS"| CyranoPairing
+    Responder -->|"A2A TLS"| RegVerify
     ChrisSend ==>|"A2A HTTPS"| CyranoApp
     CyranoExec -.->|uses| VoiceService
     CyranoExec -.->|uses| ContextService

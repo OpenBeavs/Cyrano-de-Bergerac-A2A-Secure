@@ -2,7 +2,7 @@
 
 ## Cyrano -- The Generative Engine
 
-**Model:** `gemini-3.1-pro-preview` (configured via `CYRANO_MODEL`)
+**Model:** `gemini-2.5-flash` (configured via `CYRANO_MODEL`)
 
 Cyrano is the only agent in the system that *generates* the user-visible response. His entire job is language production: take a message and craft an eloquent, expressive reply. The quality of his output *is* the quality of the system's output.
 
@@ -28,7 +28,7 @@ All models are assigned through environment variables in `.env`:
 
 ```
 # Agent model
-CYRANO_MODEL="gemini-3.1-pro-preview"
+CYRANO_MODEL="gemini-2.5-flash"
 
 # Infrastructure model (defaults to CYRANO_MODEL if not set)
 CONTEXT_MANAGER_LLM="gemini-3.1-flash-lite-preview"

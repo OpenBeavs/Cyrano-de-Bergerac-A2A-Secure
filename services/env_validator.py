@@ -39,7 +39,7 @@ def validate_env(scope: str = "cyrano"):
     if not os.environ.get("CYRANO_MODEL"):
         errors.append(
             "CYRANO_MODEL is not set.\n"
-            '    Example: CYRANO_MODEL="gemini-3.1-pro-preview"'
+            '    Example: CYRANO_MODEL="gemini-2.5-flash"'
         )
 
     if not os.environ.get("CONTEXT_MANAGER_LLM"):

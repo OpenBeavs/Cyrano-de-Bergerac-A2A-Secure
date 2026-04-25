@@ -1,10 +1,8 @@
 .venv/
 .env
 .DS_Store
-foo
 API-Key
 tmp/
 __pycache__/
 .adk/
 certs/
-Control/

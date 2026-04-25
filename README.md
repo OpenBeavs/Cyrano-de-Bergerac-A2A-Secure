@@ -93,8 +93,9 @@ This creates the `certs/` directory containing:
 - Server certificates for the Registry and Cyrano
 - A Trust Badge for Cyrano (shared secret with the Registry)
 - An HMAC signing key (shared between the Registry and Chris)
+- A Chris credential (shared secret between Chris and the Registry)
 
-The script also updates `registry/agents.json` with the Trust Badge hash.
+The script also updates `registry/agents.json` with the Trust Badge hash and Chris credential hash.
 
 ### Step 1: Create your environment file
 
@@ -106,6 +107,7 @@ Edit `.env` and fill in:
 
 - `GEMINI_API_KEY` -- your Gemini API key (get one at https://aistudio.google.com/apikey)
 - `CYRANO_TRUST_BADGE` -- copy the value from `certs/cyrano_trust_badge.txt`
+- `CHRIS_CREDENTIAL` -- copy the value from `certs/chris_credential.txt`
 
 The remaining values have sensible defaults. See `.env.example` for the full list.
 
@@ -157,24 +159,27 @@ With the Registry and Cyrano running:
 ## Key files
 
 ```
+chris/chris.py                  Chris CLI client with pairing protocol
+cyrano/cyrano.py                Cyrano A2A HTTPS server with /pairing/respond
+registry/agent_registry.py      Agent Registry (pure A2A service, three skills)
+registry/agents.json            Agent and client records (type, status, credential hashes)
+a2a_trust_pairing/              Portable pairing module (shared by Chris and Cyrano)
 scripts/mock_ca.py              Mock TLS CA: generates certs and trust credentials
-registry/agent_registry.py      Agent Registry HTTPS server
-registry/agents.json            Agent records (name, endpoint, status, badge hash)
-agents/chris.py                 Chris CLI client with pairing protocol
-agents/cyrano.py                Cyrano A2A HTTPS server with /pairing/respond
 main.py                         Entry point for all three services
 services/llm_voice_context/     Voice (audited LLM calls) and context (compaction)
 services/env_validator.py       Environment validation (fail fast)
+Architecture/How-Pairing-Works/ Per-entity pairing documentation and builder welcome package
 Architecture/                   Design rationale and system documentation
 ```
 
 ## Design documents
 
-- `Architecture/OpenBeavs - Infrastructure Trust Plane - Engineering Requirements - v2026-0423.md` -- full requirements and design rationale for the trust plane
+- `Architecture/How-Pairing-Works/` -- per-entity pairing documentation: overview, registry builders, chris builders, cyrano builders, and a welcome package for external teams
+- `Architecture/z-archive/OpenBeavs - Infrastructure Trust Plane - Engineering Requirements - v2026-0423.md` -- original pre-implementation specification (archived; current system documented in How-Pairing-Works/)
 - `Architecture/system-architecture.md` -- system topology, module structure, credential provenance, key abstractions
-- `Architecture/How-the-Handshake-Works.md` -- step-by-step walkthrough of the pairing handshake
 - `Architecture/ORIGINS.md` -- the literary metaphor and why Chris is the interesting design element
 - `Architecture/llm-voice-and-context.md` -- voice service and context compaction design
+- `a2a_trust_pairing/README.md` -- API reference for the portable pairing module
 
 ## Upstream
 

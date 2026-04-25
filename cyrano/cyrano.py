@@ -34,7 +34,6 @@
 
 import logging
 import os
-import signal
 import uuid
 
 from dotenv import load_dotenv
@@ -54,11 +53,8 @@ from a2a.types import (
     TextPart,
 )
 
-import httpx
-from fastapi import HTTPException
-from pydantic import BaseModel
-
 from services.llm_voice_context import llm_call, ConversationContext
+from a2a_trust_pairing import mount_pairing_responder
 
 
 load_dotenv()
@@ -143,7 +139,7 @@ class CyranoExecutor(AgentExecutor):
         )
 
         if is_exit:
-            os.kill(os.getpid(), signal.SIGTERM)
+            del _contexts[context_id]
 
     async def cancel(self, context: RequestContext, event_queue: EventQueue) -> None:
         pass
@@ -231,66 +227,19 @@ a2a_app = A2AFastAPIApplication(
 ).build()
 
 
-# ── Pairing endpoint ─────────────────────────────────────────────
+# ── Pairing ──────────────────────────────────────────────────────
 #
-#   POST /pairing/respond
-#
-#   Chris sends a challenge token to this endpoint. Cyrano proves
-#   its identity to the Agent Registry by calling the Registry's
-#   /pairing/verify endpoint with its Trust Badge and the challenge
-#   token. If the Registry validates both, it returns a signed
-#   pairing assertion. Cyrano relays the assertion to Chris.
-#
-#   This endpoint is not part of the A2A standard. It is specific
-#   to the OpenBeavs Infrastructure Trust Plane. It is added
-#   directly to the FastAPI app that the a2a-sdk builds.
+#   The pairing endpoint lets Chris verify Cyrano's identity
+#   through the Agent Registry. The a2a_trust_pairing module
+#   owns the mechanics; Cyrano supplies its credentials.
 
-
-class PairingRespondRequest(BaseModel):
-    challenge_token: str
-
-
-@a2a_app.post("/pairing/respond")
-async def pairing_respond(req: PairingRespondRequest) -> dict:
-    if not CYRANO_TRUST_BADGE:
-        logger.error("CYRANO_TRUST_BADGE is not configured")
-        raise HTTPException(
-            status_code=500,
-            detail="agent trust credentials not configured",
-        )
-
-    verify_url = f"{REGISTRY_URL}/pairing/verify"
-
-    async with httpx.AsyncClient(verify=CA_CERT_PATH) as client:
-        try:
-            resp = await client.post(
-                verify_url,
-                json={
-                    "agent_id": CYRANO_AGENT_ID,
-                    "challenge_token": req.challenge_token,
-                    "trust_badge": CYRANO_TRUST_BADGE,
-                },
-                timeout=10.0,
-            )
-        except httpx.ConnectError:
-            logger.error("cannot reach Agent Registry at %s", REGISTRY_URL)
-            raise HTTPException(
-                status_code=502,
-                detail="cannot reach Agent Registry",
-            )
-
-    if resp.status_code != 200:
-        logger.warning(
-            "Registry rejected pairing verify: %s %s",
-            resp.status_code,
-            resp.text,
-        )
-        raise HTTPException(
-            status_code=resp.status_code,
-            detail=resp.json().get("detail", "pairing verification failed"),
-        )
-
-    return resp.json()
+mount_pairing_responder(
+    app=a2a_app,
+    agent_id=CYRANO_AGENT_ID,
+    trust_badge=CYRANO_TRUST_BADGE,
+    registry_url=REGISTRY_URL,
+    ca_cert_path=CA_CERT_PATH,
+)
 
 
 #---------------------------------------------------------------------#

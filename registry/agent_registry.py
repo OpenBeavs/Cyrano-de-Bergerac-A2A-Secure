@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 #-----------------------------------------------------------------------------#
 #
-# agent_registry.py -- Agent Registry (HTTPS API Server)
+# agent_registry.py -- Agent Registry (A2A Service)
 #
 #   The Agent Registry performs the same structural function for
-#   agent service identity that a TLS certificate authority performs for
-#   transport identity. TLS certificate authorities are external
+#   agent service identity that a TLS certificate authority performs
+#   for transport identity. TLS certificate authorities are external
 #   to OSU: any server operator can obtain a valid TLS certificate.
 #   OSU cannot use TLS alone to express agent authorization. The
 #   Registry fills this gap. It is the authority OSU controls that
@@ -19,11 +19,22 @@
 #         asserts "this agent is authorized by OSU"
 #   Chris requires both assertions to proceed.
 #
-#   This server exposes three endpoints:
-#     GET  /agents/{agent_id}    -- look up an agent record
-#     POST /pairing/challenge    -- initiate a pairing challenge
-#     POST /pairing/verify       -- validate a Trust Badge and
-#                                   return a signed assertion
+#   The Registry is a pure A2A service. It exposes an AgentCard
+#   and handles three skills via JSON-RPC SendMessage:
+#     agent-lookup       -- look up an agent record
+#     pairing-challenge  -- initiate a pairing challenge
+#     pairing-verify     -- validate a Trust Badge and return
+#                           a signed assertion
+#
+#   Every incoming message is a JSON object in the first TextPart
+#   with a "skill" field that names the operation. The executor
+#   dispatches to the corresponding handler. This replaces the
+#   earlier REST endpoints (GET /agents/{id}, POST /pairing/
+#   challenge, POST /pairing/verify) with a uniform A2A interface.
+#   The benefit is protocol uniformity: Chris uses A2A to talk to
+#   the Registry and to Cyrano. The cost is JSON-RPC wrapping
+#   around simple request-response operations. We accepted the
+#   cost because one protocol is easier to follow than two.
 #
 #   The Registry stores agent records in a JSON file (agents.json).
 #   Challenge tokens are held in memory with a 60-second TTL.
@@ -44,12 +55,26 @@ import os
 import secrets
 import sys
 import time
+import uuid
 
 from datetime import datetime, timedelta, timezone
-from typing import Optional
 
-from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel
+from a2a.server.agent_execution.agent_executor import AgentExecutor
+from a2a.server.agent_execution.context import RequestContext
+from a2a.server.events.event_queue import EventQueue
+from a2a.server.request_handlers.default_request_handler import (
+    DefaultRequestHandler,
+)
+from a2a.server.tasks.inmemory_task_store import InMemoryTaskStore
+from a2a.server.apps.jsonrpc.fastapi_app import A2AFastAPIApplication
+from a2a.types import (
+    AgentCard,
+    AgentCapabilities,
+    AgentSkill,
+    Message,
+    Part,
+    TextPart,
+)
 
 #-----------------------------------------------------------------------------#
 
@@ -64,12 +89,12 @@ ASSERTION_TTL_SECONDS = 300
 #-----------------------------------------------------------------------------#
 #
 # load_agents()
-#   Read agent records from agents.json. Each record contains the
+#   Read agent and client records from agents.json. Each record has
+#   a "type" field ("agent" or "client"). Agent records contain the
 #   agent's name, endpoint, trust status, and the SHA-256 hash of
-#   its Trust Badge. The Registry never stores raw badges.
-#
-#   Returns:
-#       dict: agent_id -> agent record.
+#   its Trust Badge. Client records contain the client's name and
+#   the SHA-256 hash of its credential. The Registry never stores
+#   raw badges or credentials.
 #
 #-----------------------------------------------------------------------------#
 
@@ -96,9 +121,6 @@ def load_agents() -> dict:
 #   Ed25519). The Registry holds the private signing key; Chris
 #   holds the public verification key.
 #
-#   Returns:
-#       str: The hex-encoded signing key.
-#
 #-----------------------------------------------------------------------------#
 
 def load_signing_key() -> str:
@@ -117,15 +139,6 @@ def load_signing_key() -> str:
 #   payload. The signature covers agent_id + issued_at + expires_at
 #   concatenated with pipe delimiters. The delimiter prevents
 #   ambiguity if field values contain substrings of each other.
-#
-#   Args:
-#       key (str): Hex-encoded HMAC key.
-#       agent_id (str): The agent being vouched for.
-#       issued_at (str): ISO 8601 timestamp.
-#       expires_at (str): ISO 8601 timestamp.
-#
-#   Returns:
-#       str: Hex-encoded HMAC digest.
 #
 #-----------------------------------------------------------------------------#
 
@@ -146,25 +159,39 @@ signing_key = load_signing_key()
 # In-memory challenge store: token -> {agent_id, expires_at}
 _challenges: dict[str, dict] = {}
 
-app = FastAPI(title="OpenBeavs Agent Registry")
-
 
 #-----------------------------------------------------------------------------#
 #
-# GET /agents/{agent_id}
-#   Return the public portion of an agent record: name, endpoint,
+# Skill handlers
+#
+#   Each handler takes the parsed JSON payload from the incoming
+#   A2A message and returns a dict (the response payload). Errors
+#   raise RegistryError, which the executor converts to an A2A
+#   error message.
+#
+#-----------------------------------------------------------------------------#
+
+class RegistryError(Exception):
+    """Raised by skill handlers for client-facing errors."""
+    pass
+
+
+# ── agent-lookup ─────────────────────────────────────────────────
+#
+#   Returns the public portion of an agent record: name, endpoint,
 #   and trust status. Does not return the Trust Badge hash. Chris
 #   calls this to discover an agent's endpoint and confirm its
 #   status before initiating pairing.
-#
-#-----------------------------------------------------------------------------#
 
-@app.get("/agents/{agent_id}")
-def get_agent(agent_id: str) -> dict:
+def _handle_agent_lookup(payload: dict) -> dict:
+    agent_id = payload.get("agent_id", "")
     if agent_id not in agents:
-        raise HTTPException(status_code=404, detail="agent not found")
+        raise RegistryError(f"agent not found: {agent_id}")
 
     record = agents[agent_id]
+    if record.get("type") != "agent":
+        raise RegistryError(f"agent not found: {agent_id}")
+
     return {
         "agent_id": agent_id,
         "name": record["name"],
@@ -173,32 +200,28 @@ def get_agent(agent_id: str) -> dict:
     }
 
 
-#-----------------------------------------------------------------------------#
+# ── pairing-challenge ────────────────────────────────────────────
 #
-# POST /pairing/challenge
 #   Chris calls this to start the pairing handshake. The Registry
 #   generates a random challenge token, stores it with a 60-second
 #   TTL, and returns it. Chris forwards the token to Cyrano, who
-#   must present it (along with its Trust Badge) to /pairing/verify.
+#   must present it (along with its Trust Badge) via pairing-verify.
 #
 #   The challenge token is single-use conceptually: once consumed
-#   by /pairing/verify, it is deleted. The TTL is a safety net
+#   by pairing-verify, it is deleted. The TTL is a safety net
 #   for tokens that are never consumed.
-#
-#-----------------------------------------------------------------------------#
 
-class ChallengeRequest(BaseModel):
-    agent_id: str
+def _handle_pairing_challenge(payload: dict) -> dict:
+    agent_id = payload.get("agent_id", "")
+    if agent_id not in agents:
+        raise RegistryError(f"agent not found: {agent_id}")
 
-
-@app.post("/pairing/challenge")
-def create_challenge(req: ChallengeRequest) -> dict:
-    if req.agent_id not in agents:
-        raise HTTPException(status_code=404, detail="agent not found")
+    if agents[agent_id].get("type") != "agent":
+        raise RegistryError(f"agent not found: {agent_id}")
 
     token = secrets.token_hex(32)
     _challenges[token] = {
-        "agent_id": req.agent_id,
+        "agent_id": agent_id,
         "expires_at": time.time() + CHALLENGE_TTL_SECONDS,
     }
 
@@ -207,9 +230,8 @@ def create_challenge(req: ChallengeRequest) -> dict:
     return {"challenge_token": token}
 
 
-#-----------------------------------------------------------------------------#
+# ── pairing-verify ───────────────────────────────────────────────
 #
-# POST /pairing/verify
 #   Cyrano calls this to prove its identity. Cyrano presents its
 #   agent_id, the challenge token (received from Chris), and its
 #   raw Trust Badge. The Registry validates:
@@ -223,86 +245,64 @@ def create_challenge(req: ChallengeRequest) -> dict:
 #   If all checks pass, the Registry signs a pairing assertion
 #   and returns it. Cyrano relays the assertion to Chris.
 #
-#   The Trust Badge is a shared secret between the agent and the
-#   Registry. It is unrelated to TLS certificates. In the demo,
-#   scripts/mock_ca.py generates it; in production, an OSU
-#   administrative process provisions it when an agent is
-#   registered.
-#
 #   The challenge token is consumed (deleted) after verification,
 #   regardless of success or failure, to prevent replay.
-#
-#-----------------------------------------------------------------------------#
 
-class VerifyRequest(BaseModel):
-    agent_id: str
-    challenge_token: str
-    trust_badge: str
+def _handle_pairing_verify(payload: dict) -> dict:
+    agent_id = payload.get("agent_id", "")
+    challenge_token = payload.get("challenge_token", "")
+    trust_badge = payload.get("trust_badge", "")
 
-
-@app.post("/pairing/verify")
-def verify_pairing(req: VerifyRequest) -> dict:
-    challenge = _challenges.pop(req.challenge_token, None)
+    challenge = _challenges.pop(challenge_token, None)
 
     if challenge is None:
         logger.warning(
             "pairing verify: unknown challenge token for agent %s",
-            req.agent_id,
+            agent_id,
         )
-        raise HTTPException(
-            status_code=400, detail="invalid challenge token"
-        )
+        raise RegistryError("invalid challenge token")
 
     if time.time() > challenge["expires_at"]:
         logger.warning(
             "pairing verify: expired challenge token for agent %s",
-            req.agent_id,
+            agent_id,
         )
-        raise HTTPException(
-            status_code=400, detail="challenge token expired"
-        )
+        raise RegistryError("challenge token expired")
 
-    if challenge["agent_id"] != req.agent_id:
+    if challenge["agent_id"] != agent_id:
         logger.warning(
             "pairing verify: agent_id mismatch: challenge for %s, "
             "request from %s",
             challenge["agent_id"],
-            req.agent_id,
+            agent_id,
         )
-        raise HTTPException(
-            status_code=400, detail="agent_id mismatch"
-        )
+        raise RegistryError("agent_id mismatch")
 
-    if req.agent_id not in agents:
-        raise HTTPException(
-            status_code=404, detail="agent not found"
-        )
+    if agent_id not in agents:
+        raise RegistryError(f"agent not found: {agent_id}")
 
-    record = agents[req.agent_id]
+    record = agents[agent_id]
 
     presented_hash = hashlib.sha256(
-        req.trust_badge.encode()
+        trust_badge.encode()
     ).hexdigest()
     if not hmac.compare_digest(
         presented_hash, record["trust_badge_hash"]
     ):
         logger.warning(
             "pairing verify: Trust Badge mismatch for agent %s",
-            req.agent_id,
+            agent_id,
         )
-        raise HTTPException(
-            status_code=403, detail="Trust Badge mismatch"
-        )
+        raise RegistryError("Trust Badge mismatch")
 
     if record["status"] not in ("approved", "provisional"):
         logger.warning(
             "pairing verify: agent %s status is %s",
-            req.agent_id,
+            agent_id,
             record["status"],
         )
-        raise HTTPException(
-            status_code=403,
-            detail=f"agent status is {record['status']}",
+        raise RegistryError(
+            f"agent status is {record['status']}"
         )
 
     now = datetime.now(timezone.utc)
@@ -312,19 +312,28 @@ def verify_pairing(req: VerifyRequest) -> dict:
     ).isoformat()
 
     signature = sign_assertion(
-        signing_key, req.agent_id, issued_at, expires_at
+        signing_key, agent_id, issued_at, expires_at
     )
 
     logger.info(
-        "pairing verify: issued assertion for agent %s", req.agent_id
+        "pairing verify: issued assertion for agent %s", agent_id
     )
 
     return {
-        "agent_id": req.agent_id,
+        "agent_id": agent_id,
         "issued_at": issued_at,
         "expires_at": expires_at,
         "signature": signature,
     }
+
+
+#-----------------------------------------------------------------------------#
+
+_SKILL_DISPATCH = {
+    "agent-lookup": _handle_agent_lookup,
+    "pairing-challenge": _handle_pairing_challenge,
+    "pairing-verify": _handle_pairing_verify,
+}
 
 
 #-----------------------------------------------------------------------------#
@@ -344,6 +353,230 @@ def _purge_expired_challenges() -> None:
     ]
     for token in expired:
         del _challenges[token]
+
+
+#-----------------------------------------------------------------------------#
+#
+# Client authentication
+#
+#   Skills called by Chris (agent-lookup, pairing-challenge) require
+#   a chris_credential in the payload. The AR hashes it and
+#   compares against the stored hash for Chris's record in
+#   agents.json. This guards against a Fake Chris probing the
+#   system. Per-request, stateless: no sessions, no tokens.
+#
+#   Skills called by Cyrano (pairing-verify) authenticate via the
+#   Trust Badge, which is already validated by the pairing-verify
+#   handler itself. No chris_credential required.
+#
+#-----------------------------------------------------------------------------#
+
+_CHRIS_AUTH_REQUIRED = {"agent-lookup", "pairing-challenge"}
+
+
+def _authenticate_chris(payload: dict) -> None:
+    """Verify chris_credential against stored hash.
+
+    Raises RegistryError if missing or invalid.
+    """
+    credential = payload.get("chris_credential", "")
+    if not credential:
+        raise RegistryError("chris authentication failed")
+
+    presented_hash = hashlib.sha256(
+        credential.encode()
+    ).hexdigest()
+
+    # Match against Chris's record in agents.json
+    for record in agents.values():
+        if record.get("type") != "client":
+            continue
+        stored_hash = record.get("chris_credential_hash", "")
+        if hmac.compare_digest(presented_hash, stored_hash):
+            return
+
+    logger.warning("chris authentication failed: bad credential")
+    raise RegistryError("chris authentication failed")
+
+
+#-----------------------------------------------------------------------------#
+#
+# RegistryExecutor
+#
+#   A2A executor for the Agent Registry. Every incoming message is
+#   a JSON object in the first TextPart with a "skill" field that
+#   names the operation. The executor parses the JSON, looks up the
+#   skill handler, calls it, and publishes the result as an A2A
+#   response message.
+#
+#   Skills in _CHRIS_AUTH_REQUIRED are authenticated before
+#   dispatch. If chris_credential is missing or wrong, the
+#   request is rejected before the handler runs.
+#
+#   If the skill handler raises RegistryError, the executor wraps
+#   it in an error message. If the JSON is unparseable or the skill
+#   is unknown, the executor returns a descriptive error.
+#
+#-----------------------------------------------------------------------------#
+
+class RegistryExecutor(AgentExecutor):
+
+    async def execute(
+        self,
+        context: RequestContext,
+        event_queue: EventQueue,
+    ) -> None:
+        raw_text = self._extract_text(context)
+
+        try:
+            payload = json.loads(raw_text)
+        except (json.JSONDecodeError, TypeError):
+            await event_queue.enqueue_event(
+                self._error_message(
+                    context, "invalid request: expected JSON"
+                )
+            )
+            return
+
+        skill = payload.get("skill", "")
+        handler = _SKILL_DISPATCH.get(skill)
+
+        if handler is None:
+            await event_queue.enqueue_event(
+                self._error_message(
+                    context,
+                    f"unknown skill: {skill}",
+                )
+            )
+            return
+
+        # Authenticate client for skills that require it
+        if skill in _CHRIS_AUTH_REQUIRED:
+            try:
+                _authenticate_chris(payload)
+            except RegistryError as e:
+                await event_queue.enqueue_event(
+                    self._error_message(context, str(e))
+                )
+                return
+
+        try:
+            result = handler(payload)
+        except RegistryError as e:
+            await event_queue.enqueue_event(
+                self._error_message(context, str(e))
+            )
+            return
+
+        await event_queue.enqueue_event(
+            self._json_message(context, result)
+        )
+
+    async def cancel(
+        self,
+        context: RequestContext,
+        event_queue: EventQueue,
+    ) -> None:
+        pass
+
+    def _extract_text(self, context: RequestContext) -> str:
+        text = context.get_user_input()
+        if text:
+            return text
+        msg = context.message
+        if not msg:
+            return ""
+        for part in msg.parts:
+            inner = part.root if hasattr(part, "root") else part
+            if hasattr(inner, "text"):
+                return inner.text
+        return ""
+
+    def _json_message(
+        self, context: RequestContext, data: dict
+    ) -> Message:
+        return Message(
+            role="agent",
+            messageId=uuid.uuid4().hex,
+            parts=[Part(root=TextPart(text=json.dumps(data)))],
+            contextId=context.context_id,
+        )
+
+    def _error_message(
+        self, context: RequestContext, error: str
+    ) -> Message:
+        return Message(
+            role="agent",
+            messageId=uuid.uuid4().hex,
+            parts=[
+                Part(root=TextPart(
+                    text=json.dumps({"error": error})
+                ))
+            ],
+            contextId=context.context_id,
+        )
+
+
+#-----------------------------------------------------------------------------#
+#
+# Agent card and A2A app
+#
+#   The Registry advertises three skills. Chris discovers them
+#   via the agent card at /.well-known/agent-card.json.
+#
+#-----------------------------------------------------------------------------#
+
+agent_card = AgentCard(
+    name="openbeavs-registry",
+    description=(
+        "OpenBeavs Agent Registry. Manages agent records "
+        "and mediates pairing."
+    ),
+    url="https://localhost:8003/",
+    version="1.0.0",
+    capabilities=AgentCapabilities(streaming=False),
+    defaultInputModes=["text"],
+    defaultOutputModes=["text"],
+    skills=[
+        AgentSkill(
+            id="agent-lookup",
+            name="Look up an agent",
+            description=(
+                "Returns agent record: name, endpoint, "
+                "trust status."
+            ),
+            tags=["registry", "lookup"],
+        ),
+        AgentSkill(
+            id="pairing-challenge",
+            name="Request a pairing challenge",
+            description=(
+                "Generates a challenge token for "
+                "agent pairing."
+            ),
+            tags=["registry", "pairing"],
+        ),
+        AgentSkill(
+            id="pairing-verify",
+            name="Verify agent identity",
+            description=(
+                "Validates Trust Badge and challenge token, "
+                "returns signed assertion."
+            ),
+            tags=["registry", "pairing"],
+        ),
+    ],
+)
+
+_handler = DefaultRequestHandler(
+    agent_executor=RegistryExecutor(),
+    task_store=InMemoryTaskStore(),
+)
+
+app = A2AFastAPIApplication(
+    agent_card=agent_card,
+    http_handler=_handler,
+).build()
 
 
 #-----------------------------------------------------------------------------#

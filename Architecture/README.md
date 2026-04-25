@@ -13,8 +13,8 @@ The documents here serve different purposes but overlap deliberately. A design d
 
 ### Infrastructure Trust Plane
 
-- [OpenBeavs - Infrastructure Trust Plane - Engineering Requirements - v2026-0423.md](OpenBeavs%20-%20Infrastructure%20Trust%20Plane%20-%20Engineering%20Requirements%20-%20v2026-0423.md) -- Full engineering requirements for the Infrastructure Trust Plane proof of concept. Teaches the core concept (the Agent Registry performs for agent service identity the same structural function that a TLS certificate authority performs for transport identity), defines the four system entities, specifies the pairing protocol with sequence diagram, documents failure modes, and states success criteria.
-- [How-the-Handshake-Works.md](How-the-Handshake-Works.md) -- Step-by-step walkthrough of the pairing handshake between Chris, the Agent Registry, and Cyrano. Explains what happens at each step, what each party validates, and why the Trust Badge never leaves the Cyrano-Registry channel.
+- [z-archive/OpenBeavs - Infrastructure Trust Plane - Engineering Requirements - v2026-0423.md](z-archive/OpenBeavs%20-%20Infrastructure%20Trust%20Plane%20-%20Engineering%20Requirements%20-%20v2026-0423.md) -- Original pre-implementation specification. Describes the REST-based design that was later converted to pure A2A. Retained as a historical artifact; the current system is documented in How-Pairing-Works/.
+- [How-Pairing-Works/](How-Pairing-Works/) -- Per-entity pairing documentation. Overview and navigation (README.md), plus dedicated docs for registry builders, chris builders, cyrano builders, and an external builder welcome package. Replaces the earlier How-the-Handshake-Works.md with comprehensive per-entity coverage.
 
 ### Services
 
@@ -35,7 +35,7 @@ The documents here serve different purposes but overlap deliberately. A design d
 
 ## Cross-references
 
-These documents form a citation graph. Code comments in `agents/cyrano.py` cite llm-voice-and-context.md. Code comments in `registry/agent_registry.py` cite the Engineering Requirements ERD. LLM-Strategy.md cites llm-voice-and-context.md for the context manager model. ORIGINS.md provides the conceptual foundation that the other documents assume. The README.md at the project root provides the operational orientation.
+These documents form a citation graph. Code comments in `cyrano/cyrano.py` cite llm-voice-and-context.md. Code comments in `registry/agent_registry.py` cite the Engineering Requirements ERD. LLM-Strategy.md cites llm-voice-and-context.md for the context manager model. ORIGINS.md provides the conceptual foundation that the other documents assume. The README.md at the project root provides the operational orientation. The `a2a_trust_pairing/README.md` provides the API reference for the portable pairing module.
 
 A reader can enter at any level:
 - **From the code** -- follow the citation in a file header to the relevant architecture doc.
@@ -44,4 +44,4 @@ A reader can enter at any level:
 
 ## Governing standards
 
-Documentation in this directory follows the Feynman Standard: explain why, not just what; teach without announcing you are teaching. The voice is that of a colleague sharing working knowledge. The structure is layered: code comments for the developer at work, these documents for the reader studying the design, CLAUDE.md for the agent or newcomer orienting to the project.
+Documentation in this directory follows the Feynman Standard: if you cannot explain it plainly without loss of meaning, you do not yet understand it. The voice is that of a colleague sharing working knowledge. The structure is layered: code comments for the developer at work, these documents for the reader studying the design, CLAUDE.md for the agent or newcomer orienting to the project.

@@ -5,8 +5,8 @@
 #
 #   This script generates all credentials for the Infrastructure
 #   Trust Plane proof of concept. Run it once before starting any
-#   service. It produces three independent artifacts that serve
-#   three independent trust relationships:
+#   service. It produces four independent artifacts that serve
+#   four independent trust relationships:
 #
 #   1. TLS CERTIFICATES (transport identity)
 #      Files: ca.crt, ca.key, registry.crt/.key, cyrano.crt/.key
@@ -57,7 +57,30 @@
 #      key can be distributed openly. This is a key management
 #      change, not an architectural one.
 #
-#   All three artifacts are generated in one script for demo
+#   4. CHRIS CREDENTIAL (initiator identity — Chris to Registry)
+#      Files: chris_credential.txt, chris_credential_hash.txt
+#      Also updates: registry/agents.json (chris-001 record)
+#
+#      A shared secret between Chris and the Agent Registry.
+#      Chris presents it with every request to the AR. The AR
+#      hashes it and compares against the stored value.
+#
+#      This credential guards against a Fake Chris exploiting
+#      the network boundary between Chris and the AR. The
+#      Chris-AR trust is organizational (the admin team controls
+#      both), but the credential makes that trust verifiable at
+#      the protocol level.
+#
+#      Deliberately not called a Trust Badge. Trust Badges are
+#      user-facing earned trust from external teams; Chris's
+#      credential is infrastructure authentication that users
+#      never see. Different trust tiers get different names.
+#
+#      Demo: Generated as a random hex string, same as the Trust
+#      Badge. In production, provisioned through the admin team's
+#      internal process.
+#
+#   All four artifacts are generated in one script for demo
 #   convenience. In production, each would come from a different
 #   issuing authority through a different process.
 #
@@ -293,7 +316,13 @@ def write_pem(path: str, obj) -> None:
 #      verification key can be public. Here, we use symmetric
 #      HMAC because it is simpler to set up for a demo.
 #
-#   Both are written as plain text files in certs/.
+#   3. Chris credential — a 32-byte random hex string shared
+#      between Chris and the Agent Registry. Chris presents the
+#      raw value; the Registry compares its SHA-256 hash. In
+#      production, the admin team provisions this through an
+#      internal process.
+#
+#   All three are written as plain text files in certs/.
 #
 #-----------------------------------------------------------------------------#
 
@@ -317,44 +346,84 @@ def generate_trust_credentials() -> None:
         f.write(signing_key)
     logger.info("  wrote %s", os.path.relpath(key_path, REPO_ROOT))
 
-    _update_agents_json(badge_hash)
+    chris_credential = secrets.token_hex(32)
+    chris_hash = hashlib.sha256(
+        chris_credential.encode()
+    ).hexdigest()
+
+    chris_path = os.path.join(
+        CERTS_DIR, "chris_credential.txt"
+    )
+    with open(chris_path, "w") as f:
+        f.write(chris_credential)
+    logger.info(
+        "  wrote %s", os.path.relpath(chris_path, REPO_ROOT)
+    )
+
+    chris_hash_path = os.path.join(
+        CERTS_DIR, "chris_credential_hash.txt"
+    )
+    with open(chris_hash_path, "w") as f:
+        f.write(chris_hash)
+    logger.info(
+        "  wrote %s",
+        os.path.relpath(chris_hash_path, REPO_ROOT),
+    )
+
+    _update_agents_json(badge_hash, chris_hash)
 
 
 #-----------------------------------------------------------------------------#
 #
 # _update_agents_json()
-#   Write the trust_badge_hash into registry/agents.json so the
+#   Write credential hashes into registry/agents.json so the
 #   Registry and the generated credentials stay in sync. Without
-#   this, the operator would need to copy the hash manually after
+#   this, the operator would need to copy hashes manually after
 #   every cert regeneration -- an easy step to forget and a
 #   confusing failure to debug.
 #
+#   Writes the full schema: agent records (type "agent") with
+#   trust_badge_hash, and the Chris client record (type "client")
+#   with chris_credential_hash. The type field distinguishes agents
+#   from clients in a single flat namespace.
+#
 #   Args:
 #       badge_hash (str): SHA-256 hex digest of the Trust Badge.
+#       chris_credential_hash (str): SHA-256 hex digest of the
+#           Chris credential.
 #
 #-----------------------------------------------------------------------------#
 
-def _update_agents_json(badge_hash: str) -> None:
+def _update_agents_json(
+    badge_hash: str, chris_credential_hash: str
+) -> None:
     import json
 
-    agents_path = os.path.join(REPO_ROOT, "registry", "agents.json")
-    if not os.path.exists(agents_path):
-        logger.info("  registry/agents.json not found, skipping update")
-        return
+    agents_path = os.path.join(
+        REPO_ROOT, "registry", "agents.json"
+    )
 
-    with open(agents_path, "r") as f:
-        data = json.load(f)
-
-    for agent_id, record in data.items():
-        if "trust_badge_hash" in record:
-            record["trust_badge_hash"] = badge_hash
+    data = {
+        "cyrano-001": {
+            "type": "agent",
+            "name": "Cyrano de Bergerac",
+            "endpoint": "https://localhost:8002",
+            "status": "approved",
+            "trust_badge_hash": badge_hash,
+        },
+        "chris-001": {
+            "type": "client",
+            "name": "Chris (CLI)",
+            "chris_credential_hash": chris_credential_hash,
+        },
+    }
 
     with open(agents_path, "w") as f:
         json.dump(data, f, indent=2)
         f.write("\n")
 
     logger.info(
-        "  updated trust_badge_hash in %s",
+        "  wrote %s",
         os.path.relpath(agents_path, REPO_ROOT),
     )
 
@@ -397,10 +466,11 @@ def main() -> None:
     write_pem(os.path.join(CERTS_DIR, "cyrano.key"), cyr_key)
     write_pem(os.path.join(CERTS_DIR, "cyrano.crt"), cyr_cert)
 
-    # Artifacts 2 and 3: Trust Badge (agent service identity) and HMAC
-    # signing key (assertion verification). Both are independent of
-    # TLS and of each other. In production, each comes from a
-    # different provisioning process.
+    # Artifacts 2--4: Trust Badge (agent service identity), HMAC
+    # signing key (assertion verification), and Chris credential
+    # (initiator identity). All are independent of TLS and of
+    # each other. In production, each comes from a different
+    # provisioning process.
     logger.info("generating trust credentials (independent of TLS)")
     generate_trust_credentials()
 

@@ -48,19 +48,24 @@ User (CLI) → Chris → [pairing via Registry] → [A2A :8002 HTTPS] → Cyrano
 
 | Path | Role |
 |------|------|
-| `agents/chris.py` | CLI chat client. Pure relay, no LLM. Runs full pairing protocol before chat: queries Registry, sends challenge to Cyrano, verifies signed assertion. Then routes user messages to Cyrano via `A2AClient` over HTTPS. |
-| `agents/cyrano.py` | A2A HTTPS server. Implements `AgentExecutor` from the `a2a-sdk`. Crafts eloquent replies via the voice service. Exposes `/pairing/respond` endpoint: receives challenge from Chris, proves identity to Registry, relays signed assertion back. |
-| `registry/agent_registry.py` | Agent Registry HTTPS server. Authorizes agents (agent service identity). Stores agent records in `registry/agents.json`. Exposes `/agents/{id}`, `/pairing/challenge`, `/pairing/verify`. Signs pairing assertions with HMAC-SHA256. |
-| `scripts/mock_ca.py` | Mock TLS CA. Generates server certs, Trust Badge, and HMAC signing key. Run once before starting any service. |
+| `chris/chris.py` | CLI chat client. Pure relay, no LLM. Runs full pairing protocol before chat via `a2a_trust_pairing`. Then routes user messages to Cyrano via `A2AClient` over HTTPS. |
+| `cyrano/cyrano.py` | A2A HTTPS server. Implements `AgentExecutor` from the `a2a-sdk`. Crafts eloquent replies via the voice service. Pairing responder mounted via `a2a_trust_pairing`. |
+| `registry/agent_registry.py` | Agent Registry (pure A2A service). Authorizes agents (agent service identity). Stores agent and client records in `registry/agents.json`. Three A2A skills: `agent-lookup`, `pairing-challenge`, `pairing-verify`. Signs pairing assertions with HMAC-SHA256. |
+| `a2a_trust_pairing/` | Portable pairing module. `initiate_pairing()` (Chris side), `mount_pairing_responder()` (Cyrano side), `verify_assertion()` (HMAC check). No project-specific imports; config via parameters. |
+| `scripts/mock_ca.py` | Mock TLS CA. Generates server certs, Trust Badge, HMAC signing key, and Chris credential. Run once before starting any service. |
 | `main.py` | Entry point. `serve registry` starts the Registry on :8003; `serve cyrano` starts Cyrano on :8002; `chat [agent_id]` starts Chris. |
 | `services/llm_voice_context/` | Voice and context services. `llm_call()` makes audited Gemini API calls; `ConversationContext` manages history with three-tier compaction (90% trigger, post-compaction <=30%). |
 | `services/env_validator.py` | Environment validator. Checks required vars, warns on missing optional vars with defaults, fails fast. |
 
 ### Key files and directories
 
+- `chris/` -- Chris CLI client
+- `cyrano/` -- Cyrano A2A server
+- `registry/` -- Agent Registry (pure A2A service): `agent_registry.py`, `agents.json` (agent + client records)
+- `a2a_trust_pairing/` -- Portable pairing module (shared by Chris and Cyrano)
 - `Architecture/` -- System diagrams, literary origins, design principles, Infrastructure Trust Plane ERD
-- `registry/` -- Agent Registry: `agent_registry.py` (FastAPI HTTPS server), `agents.json` (agent records)
-- `scripts/` -- `mock_ca.py` (Mock TLS CA, certs, trust credentials)
+- `Architecture/How-Pairing-Works/` -- Per-entity pairing documentation and builder welcome package
+- `scripts/` -- `mock_ca.py` (Mock TLS CA, certs, trust credentials including Chris credential)
 - `certs/` -- Generated TLS certificates and trust credentials (gitignored)
 - `services/` -- Shared services: `llm_voice_context/` (voice + context), `env_validator.py`. Portable between projects.
 - `tmp/` -- Runtime logs (gitignored): `a2a-backend.log`, `{agent}-voice.log`
@@ -76,7 +81,7 @@ User (CLI) → Chris → [pairing via Registry] → [A2A :8002 HTTPS] → Cyrano
 - `cryptography` -- TLS certificate generation in `scripts/mock_ca.py`
 - Cyrano uses a Gemini model via `CYRANO_MODEL` env var. See `Architecture/LLM-Strategy.md` for model rationale.
 - Infrastructure vars: `CONTEXT_MANAGER_LLM` (defaults to `CYRANO_MODEL`), `CONTEXT_MAX` (defaults to 131072). See `.env.example`.
-- Trust Plane vars: `CYRANO_TRUST_BADGE`, `CYRANO_AGENT_ID`, `REGISTRY_URL`, `CA_CERT_PATH`, `PAIRING_VERIFY_KEY`. See `.env.example`.
+- Trust Plane vars: `CYRANO_TRUST_BADGE`, `CYRANO_AGENT_ID`, `REGISTRY_URL`, `CA_CERT_PATH`, `PAIRING_VERIFY_KEY`, `CHRIS_CREDENTIAL`. See `.env.example`.
 
 ### Voice + Context Architecture
 
@@ -103,18 +108,22 @@ Pairing protocol (runs before every chat session):
 6. Cyrano relays the assertion to Chris
 7. Chris verifies the assertion (HMAC signature, agent_id, expiration)
 
-See `Architecture/OpenBeavs - Infrastructure Trust Plane - Engineering Requirements - v2026-0423.md` for the full design rationale.
+See `Architecture/How-Pairing-Works/` for per-entity documentation. The original engineering requirements are archived in `Architecture/z-archive/`.
 
 ## Current status
 
-- Infrastructure Trust Plane implemented and tested end-to-end (2026-04-23).
+- Infrastructure Trust Plane implemented and tested end-to-end (2026-04-25).
 - Four-entity architecture: Mock TLS CA, Agent Registry, Cyrano (HTTPS), Chris CLI.
 - All communication over TLS. Certificates issued by Mock TLS CA.
+- Agent Registry is a pure A2A service (three skills: agent-lookup, pairing-challenge, pairing-verify). No REST endpoints.
+- Pairing protocol extracted into portable module (`a2a_trust_pairing/`). Chris and Cyrano import from it.
+- Chris authenticates to the AR with `chris_credential` on every request. Fake Chris rejected.
 - Full pairing protocol: challenge-response with Registry-mediated verification.
-- Failure modes verified: unknown agent, unapproved agent, tampered assertion, expired assertion.
+- Eight failure modes verified: unknown agent, unapproved agent, wrong Trust Badge, tampered assertion, expired assertion, Fake Chris (no credential), Fake Chris (wrong credential), happy path.
 - Cyrano runs as a pure a2a-sdk server (no ADK dependency). Voice + context services wired in. Audit logs verified working.
 - Chris runs as a CLI chat client with pairing-before-chat. Maintains conversation continuity via context_id.
-- API key is configured and verified working. Model: Gemini 3.1 Pro (Cyrano).
+- API key is configured and verified working. Model: Gemini 2.5 Flash (Cyrano).
+- Per-entity documentation under `Architecture/How-Pairing-Works/` including external builder welcome package.
 - Forked from https://github.com/jsweet8258/Cyrano-de-Bergerac-A2A (upstream).
 
 ## Design principles

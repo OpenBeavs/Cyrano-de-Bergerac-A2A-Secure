@@ -22,7 +22,7 @@ Each agent writes to `tmp/{agent_name}-voice.log`. Entries are JSON lines -- one
   "session_id": "a1b2c3d4e5f6",
   "turn": 3,
   "agent": "cyrano",
-  "model": "gemini-3.1-pro-preview",
+  "model": "gemini-2.5-flash",
   "input": "Venus is bright tonight",
   "output": "Indeed, my love -- she burns with...",
   "tokens": {
@@ -113,7 +113,7 @@ Required variables: `GEMINI_API_KEY`, `CYRANO_MODEL`. Optional variables (`CONTE
 
 ## Cross-References
 
-- **Code:** `agents/cyrano.py` -- the `CyranoExecutor` that wires into these services; `agents/chris.py` -- the CLI client
+- **Code:** `cyrano/cyrano.py` -- the `CyranoExecutor` that wires into these services; `chris/chris.py` -- the CLI client
 - **Architecture:** [system-architecture.md](system-architecture.md) -- where the services sit in the system topology
 - **Strategy:** [LLM-Strategy.md](LLM-Strategy.md) -- model selection for Cyrano and for the context manager
-- **Standards:** The Feynman Standard governs the teaching commentary in the service code (see CLAUDE.md)
+- **Standards:** The Feynman Standard governs the teaching commentary in the service code (see CLAUDE.md standing directive)
