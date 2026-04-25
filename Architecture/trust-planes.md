@@ -30,9 +30,7 @@ flowchart TB
         Hub("GENESIS Hub"):::component
         BHA("Beaver Health Agent (BHA)<br/>Private A2A Agent"):::component
         AuthzAgent("Authorization Agent<br/>(System Agent)"):::component
-        Hub -->|"Request/Route to BHA"| BHA
-        BHA -->|"Requires Auth Claims"| Hub
-        Hub -->|"Provide Identity Claims"| BHA
+        Hub -->|"Route Request"| BHA
         BHA -->|"Check Permissions"| AuthzAgent
         AuthzAgent -->|"Return Authorization Decision"| BHA
     end
