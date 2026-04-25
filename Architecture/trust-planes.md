@@ -6,7 +6,52 @@ This is the reference document for the Trust Planes architecture. It defines the
 
 The Trust Planes model was developed during the OpenBeavs project (OSU GENESIS Hub, 2025) to answer a practical question: when an agent sends a message to another agent, and that agent accesses a service on the user's behalf, what must be true for the system to be trustworthy? The answer is not one thing; it is three independent concerns that happen to intersect at every request.
 
-**Provenance:** The three-plane trust model was developed by John Sweet during the architecture of the OSU GENESIS Hub and presented in a design session with James Smith (2025-11-12). The original Mermaid diagram and meeting notes are archived externally. The Infrastructure Trust Plane was formalized into engineering requirements (`z-archive/OpenBeavs - Infrastructure Trust Plane - Engineering Requirements - v2026-0423.md`) and implemented as the proof of concept in this repository.
+**Provenance:** The three-plane trust model was developed by John Sweet during the architecture of the OSU GENESIS Hub and presented in a design session with James Smith on November 12, 2025. The original architecture diagram (reproduced below) was created during that session. The Infrastructure Trust Plane was formalized into engineering requirements (`z-archive/OpenBeavs - Infrastructure Trust Plane - Engineering Requirements - v2026-0423.md`) and implemented as the proof of concept in this repository.
+
+### Original architecture diagram
+
+The following diagram was created during the November 2025 design session. It shows the three trust planes as they apply to the OSU GENESIS Hub, with the Beaver Health Agent (BHA) as a concrete example. The diagram illustrates how actors within each plane produce the trust context consumed by actors in adjacent planes.
+
+```mermaid
+flowchart TB
+    classDef plane fill:#f2f2f2,stroke:#666,stroke-width:1px,color:#000,font-weight:bold
+    classDef component fill:#ffffff,stroke:#666,stroke-width:1px
+    
+    subgraph UserTrustPlane["USER TRUST PLANE (Identity & Roles)"]
+        User("End User<br/>(e.g., Dr. Sweet)"):::component
+        AuthAgent("Authentication Agent<br/>(System Agent)"):::component
+        ONID("ONID Identity Provider<br/>(Microsoft)"):::component
+        User -->|"Authenticate"| AuthAgent
+        AuthAgent -->|"Verify Identity"| ONID
+        ONID -->|"Return Identity Claims"| AuthAgent
+    end
+    
+    subgraph AgentTrustPlane["AGENT TRUST PLANE (Access Control & Business Rules)"]
+        Hub("GENESIS Hub"):::component
+        BHA("Beaver Health Agent (BHA)<br/>Private A2A Agent"):::component
+        AuthzAgent("Authorization Agent<br/>(System Agent)"):::component
+        Hub -->|"Request/Route to BHA"| BHA
+        BHA -->|"Requires Auth Claims"| Hub
+        Hub -->|"Provide Identity Claims"| BHA
+        BHA -->|"Check Permissions"| AuthzAgent
+        AuthzAgent -->|"Return Authorization Decision"| BHA
+    end
+    
+    subgraph InfraTrustPlane["INFRASTRUCTURE TRUST PLANE (Service Identity & mTLS)"]
+        Registry("OSU A2A Registry<br/>(Defines Trusted Agents)"):::component
+        MCP("MCP Server<br/>(PHI Access Layer)"):::component
+        Hub -->|"Lookup Agent Info"| Registry
+        BHA -->|"mTLS-Authenticated Request"| MCP
+        MCP -->|"Trusts BHA via Registry & mTLS"| BHA
+    end
+    
+    AuthAgent -.->|"Issues<br/>User Identity Token"| Hub
+    Hub -.->|"Provides Verified User Claims"| BHA
+    
+    class UserTrustPlane,AgentTrustPlane,InfraTrustPlane plane
+```
+
+Note the cross-plane flows (dashed arrows): the Authentication Agent in the User Plane issues identity tokens that flow into the Agent Plane. The Registry in the Infrastructure Plane defines trusted agents that the Agent Plane relies on. These flows are the context-production relationships described in the sections that follow.
 
 ## The three planes
 
@@ -42,7 +87,7 @@ It would be overly simplistic to describe the relationship between planes as gat
 
 - The **Infrastructure Plane** produces verified service identity context. The Registry defines which agents are authorized; TLS verifies transport identity. Without this work, the Agent Plane has no basis for knowing whether the agent at the endpoint is genuine. The Infrastructure Plane's output is what makes agent identity verification possible.
 
-The original Mermaid diagram (2025-11-12) illustrates this directly. It shows actors within each plane doing the work that produces the context consumed by actors in adjacent planes: the Authentication Agent issues User Identity Tokens that flow into the Agent Plane; the Registry defines trusted agents that the Agent Plane relies on; the Agent Plane's authorization decisions determine what infrastructure resources the agent may access on the user's behalf.
+The architecture diagram at the top of this document illustrates this directly. It shows actors within each plane doing the work that produces the context consumed by actors in adjacent planes: the Authentication Agent issues User Identity Tokens that flow into the Agent Plane; the Registry defines trusted agents that the Agent Plane relies on; the Agent Plane's authorization decisions determine what infrastructure resources the agent may access on the user's behalf.
 
 **Governance follows from context production.** The authority question at each plane governs not only peer access within the plane but access from the plane above. The Infrastructure Plane governs what agents can do with infrastructure services. The Agent Plane governs what users can do with agents. This directional governance is a consequence of which plane produces the context that the next plane consumes: you govern access to the context you produce.
 
