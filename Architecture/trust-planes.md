@@ -4,13 +4,13 @@
 
 This is the reference document for the Trust Planes architecture. It defines the model, explains the reasoning behind it, and addresses the boundary questions that arise when applying it to real systems.
 
-The Trust Planes model was developed during the OpenBeavs project (OSU GENESIS Hub, 2025) to answer a practical question: when an agent sends a message to another agent, and that agent accesses a service on the user's behalf, what must be true for the system to be trustworthy? The answer is not one thing; it is three independent concerns that happen to intersect at every request.
+The Trust Planes model was developed to answer a practical question: when an agent sends a message to another agent, and that agent accesses a service on the user's behalf, what must be true for the system to be trustworthy? The answer is not one thing; it is three independent concerns that happen to intersect at every request.
 
 **Provenance:** The three-plane trust model was developed by John Sweet during the architecture of the OSU GENESIS Hub and presented in a design session with James Smith on November 12, 2025. The Infrastructure Trust Plane was formalized into engineering requirements (`z-archive/OpenBeavs - Infrastructure Trust Plane - Engineering Requirements - v2026-0423.md`) and implemented as the proof of concept in this repository.
 
 ### Architecture diagram
 
-The following diagram shows the three trust planes as they apply to the OSU GENESIS Hub, with the Beaver Health Agent (BHA) as a concrete example. The diagram illustrates how actors within each plane produce the trust context consumed by actors in adjacent planes.
+The following diagram shows the three trust planes applied to a concrete scenario: a user accesses a health agent that handles protected health information (PHI). The diagram illustrates how actors within each plane produce the trust context consumed by actors in adjacent planes.
 
 ```mermaid
 flowchart TB
@@ -18,25 +18,23 @@ flowchart TB
     classDef component fill:#ffffff,stroke:#666,stroke-width:1px
     
     subgraph UserPlane["USER PLANE (Human Identity & Authorization)"]
-        User("End User<br/>(e.g., Dr. Sweet)"):::component
-        AuthAgent("Authentication Agent<br/>(System Agent)"):::component
-        ONID("ONID Identity Provider<br/>(Microsoft)"):::component
+        User("End User<br/>(e.g., a clinician)"):::component
+        AuthAgent("Authentication Agent"):::component
+        IdP("Identity Provider"):::component
         User -->|"Authenticate"| AuthAgent
-        AuthAgent -->|"Verify Identity"| ONID
-        ONID -->|"Return Identity Claims"| AuthAgent
+        AuthAgent -->|"Verify Identity"| IdP
+        IdP -->|"Return Identity Claims"| AuthAgent
     end
     
     subgraph AgentPlane["AGENT PLANE (Agent Identity & Access Control)"]
-        Hub("GENESIS Hub"):::component
-        BHA("Beaver Health Agent (BHA)<br/>Private A2A Agent"):::component
-        AuthzAgent("Authorization Agent<br/>(System Agent)"):::component
+        Hub("Agent Hub<br/>(Routes Users to Agents)"):::component
+        BHA("Health Agent<br/>(Handles PHI)"):::component
         Hub -->|"Route Request"| BHA
-        BHA -->|"Check Permissions"| AuthzAgent
-        AuthzAgent -->|"Return Authorization Decision"| BHA
+        BHA -->|"Authorize User<br/>& Return Decision"| Hub
     end
     
     subgraph InfraPlane["INFRASTRUCTURE PLANE (Service Identity & Authorization)"]
-        Registry("OSU A2A Registry<br/>(Defines Trusted Agents)"):::component
+        Registry("Agent Registry<br/>(Defines Trusted Agents)"):::component
         MCP("MCP Server<br/>(PHI Access Layer)"):::component
         Hub -->|"Lookup Agent"| Registry
         Registry -.->|"Return Agent Record<br/>& Trust Status"| Hub
@@ -58,7 +56,7 @@ When a user sends a message through an agent, and that agent accesses infrastruc
 
 1. **Infrastructure Plane.** The services that agents depend on: networking (TLS), tool servers (MCP), databases, raw LLMs, and registries including the Agent Registry. The trust questions here are about service identity and service-level authorization.
 
-2. **Agent Plane.** The agents themselves: Chris, Cyrano, and any agent that acts with some degree of autonomy on behalf of a user or another agent. The trust questions here are about agent identity and agent-level authorization.
+2. **Agent Plane.** The agents themselves: any agent that acts with some degree of autonomy on behalf of a user or another agent. The trust questions here are about agent identity and agent-level authorization.
 
 3. **User Plane.** The humans who interact with agents. The trust questions here are about human identity and human-level authorization.
 
@@ -70,7 +68,7 @@ Each plane asks two questions. The first is about identity: *who (or what) is th
 |-------|----------|-----------|
 | **Infrastructure** | Is this service genuine? (TLS cert, Registry record) | Does this agent have access to this resource? |
 | **Agent** | Is this agent who it claims to be? (Registry verification, pairing protocol) | Does this user have permission to use this agent? |
-| **User** | Is this human who they claim to be? (Identity provider, e.g. ONID/Microsoft) | What actions can this user perform? |
+| **User** | Is this human who they claim to be? (Identity provider) | What actions can this user perform? |
 
 The identity question is about verification: confirming that an entity is what it presents itself to be. The authority question is about permission: given a verified identity, what access is granted?
 
