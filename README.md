@@ -18,7 +18,7 @@ When a user sends a message through an agent, and that agent accesses infrastruc
 | **Agent** | Is this agent who it claims to be? (Registry verification, pairing) | Does this user have permission to use this agent? |
 | **User** | Is this human who they claim to be? (Identity provider) | What actions can this user perform? |
 
-The authority question at each plane governs not only peer access within the plane but access from the plane above. The Infrastructure Plane gates what agents can do with services. The Agent Plane gates what users can do with agents. Each plane is a gatekeeper for the plane above it.
+Each plane actively produces the trust context that gives adjacent planes their meaning. The Infrastructure Plane produces verified service identity (TLS, Registry assertions) that the Agent Plane consumes. The Agent Plane produces authorization decisions that give user identity its operational effect. Governance follows from context production: the authority question at each plane governs not only peer access within the plane but access from the plane above.
 
 The planes are independent in failure: a request can fail on any plane regardless of the others. A valid TLS connection says nothing about whether the organization authorized the agent. An authorized agent says nothing about whether the user has permission. All three planes are evaluated for every request; they do not form a sequential pipeline.
 
@@ -40,7 +40,7 @@ This is a teaching repository and a proof of concept for the Infrastructure Trus
 
 - **The Agent Registry and its role.** The Registry is a standalone service that stores agent records, mediates pairing challenges, and issues signed assertions. The API surface, the data model, and the pairing protocol are production mechanisms. In production, this service runs behind a load balancer; here it runs on localhost:8003.
 
-- **The pairing protocol.** The challenge-response sequence, the Trust Badge verification, the signed assertion, and the client-side verification are all production mechanisms. The three-party handshake (Chris initiates, Cyrano proves to Registry, Registry vouches to Chris) exists to keep the Trust Badge out of Chris's hands. That constraint applies identically in production.
+- **The pairing protocol.** The challenge-response sequence, the Trust Badge verification, the signed assertion, and the client-side verification are all production mechanisms. The three-party protocol (Chris initiates, Cyrano proves to Registry, Registry vouches to Chris) exists to keep the Trust Badge out of Chris's hands. That constraint applies identically in production.
 
 - **The trust model.** Two independent authority structures operate in parallel: a TLS CA for transport identity, and the Agent Registry for agent service identity. Chris requires both. This separation exists because TLS CAs are shared global infrastructure that no single organization controls.
 

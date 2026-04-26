@@ -202,7 +202,7 @@ def _handle_agent_lookup(payload: dict) -> dict:
 
 # ── pairing-challenge ────────────────────────────────────────────
 #
-#   Chris calls this to start the pairing handshake. The Registry
+#   Chris calls this to start the pairing protocol. The Registry
 #   generates a random challenge token, stores it with a 60-second
 #   TTL, and returns it. Chris forwards the token to Cyrano, who
 #   must present it (along with its Trust Badge) via pairing-verify.
