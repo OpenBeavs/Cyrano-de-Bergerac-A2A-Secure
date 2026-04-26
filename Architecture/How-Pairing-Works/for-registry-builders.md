@@ -1,6 +1,6 @@
 # For Registry Builders
 
-How to build and operate an Agent Registry for the OpenBeavs Infrastructure Trust Plane.
+How to build and operate an Agent Registry for the Infrastructure Trust Plane.
 
 ## What the Agent Registry is
 

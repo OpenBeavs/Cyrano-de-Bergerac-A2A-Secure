@@ -6,7 +6,7 @@ This is the reference document for the Trust Planes architecture. It defines the
 
 The Trust Planes model was developed to answer a practical question: when an agent sends a message to another agent, and that agent accesses a service on the user's behalf, what must be true for the system to be trustworthy? The answer is not one thing; it is three independent concerns that happen to intersect at every request.
 
-**Provenance:** The three-plane trust model was developed by John Sweet during the architecture of the OSU GENESIS Hub and presented in a design session with James Smith on November 12, 2025. The Infrastructure Trust Plane was formalized into engineering requirements (`z-archive/OpenBeavs - Infrastructure Trust Plane - Engineering Requirements - v2026-0423.md`) and implemented as the proof of concept in this repository.
+**Provenance:** The three-plane trust model was developed by John Sweet during the architecture of an agentic systems project at OSU (the OpenBeavs project) and presented in a design session with James Smith on November 12, 2025. The Infrastructure Trust Plane was formalized into engineering requirements (archived in `z-archive/`) and implemented as the proof of concept in this repository.
 
 ### Architecture diagram
 
@@ -151,4 +151,4 @@ The User Trust Plane and Agent Trust Plane are not implemented. They are documen
 For the implementation details of the Infrastructure Trust Plane, see:
 - [How-Pairing-Works/](How-Pairing-Works/) for per-entity documentation of the pairing protocol.
 - [system-architecture.md](system-architecture.md) for the system topology and module structure.
-- [z-archive/OpenBeavs - Infrastructure Trust Plane - Engineering Requirements - v2026-0423.md](z-archive/OpenBeavs%20-%20Infrastructure%20Trust%20Plane%20-%20Engineering%20Requirements%20-%20v2026-0423.md) for the original engineering specification.
+- [Infrastructure Trust Plane - Engineering Requirements (archived)](z-archive/OpenBeavs%20-%20Infrastructure%20Trust%20Plane%20-%20Engineering%20Requirements%20-%20v2026-0423.md) for the original engineering specification.

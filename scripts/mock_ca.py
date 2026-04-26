@@ -146,10 +146,10 @@ def generate_ca() -> tuple:
 
     ca_name = x509.Name([
         x509.NameAttribute(
-            NameOID.COMMON_NAME, "OpenBeavs Dev CA"
+            NameOID.COMMON_NAME, "CDB Dev CA"
         ),
         x509.NameAttribute(
-            NameOID.ORGANIZATION_NAME, "OpenBeavs Development"
+            NameOID.ORGANIZATION_NAME, "CDB Development"
         ),
     ])
 
@@ -454,7 +454,7 @@ def main() -> None:
 
     logger.info("generating Registry TLS server certificate")
     reg_key, reg_cert = generate_server_cert(
-        ca_key, ca_cert, "OpenBeavs Registry"
+        ca_key, ca_cert, "CDB Registry"
     )
     write_pem(os.path.join(CERTS_DIR, "registry.key"), reg_key)
     write_pem(os.path.join(CERTS_DIR, "registry.crt"), reg_cert)

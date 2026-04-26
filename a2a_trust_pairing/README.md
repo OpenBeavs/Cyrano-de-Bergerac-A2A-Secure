@@ -1,6 +1,6 @@
 # a2a_trust_pairing
 
-Portable pairing module for the OpenBeavs Infrastructure Trust Plane.
+Portable pairing module for the Infrastructure Trust Plane.
 
 This module handles the mechanics of agent pairing: how an initiator (Chris) verifies a responder (Cyrano) through the Agent Registry, and how a responder proves its identity when challenged. It implements the full challenge-response protocol with HMAC-SHA256 assertion verification.
 
@@ -98,4 +98,4 @@ Additional documentation is available separately upon request under `How-Pairing
 - **For Chris Builders** -- the initiator's perspective: assertion verification, failure handling, and the two trust tiers.
 - **For Registry Builders** -- Agent Registry architecture, record schemas, skill handlers, credential provisioning, and attack surfaces.
 
-Contact the OpenBeavs admin team to request these documents along with your Trust Badge and agent registration.
+Contact the admin team to request these documents along with your Trust Badge and agent registration.

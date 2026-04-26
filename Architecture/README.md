@@ -17,7 +17,7 @@ The documents here serve different purposes but overlap deliberately. A design d
 
 ### Infrastructure Trust Plane
 
-- [z-archive/OpenBeavs - Infrastructure Trust Plane - Engineering Requirements - v2026-0423.md](z-archive/OpenBeavs%20-%20Infrastructure%20Trust%20Plane%20-%20Engineering%20Requirements%20-%20v2026-0423.md) -- Original pre-implementation specification. Describes the REST-based design that was later converted to pure A2A. Retained as a historical artifact; the current system is documented in How-Pairing-Works/.
+- [Infrastructure Trust Plane - Engineering Requirements (archived)](z-archive/OpenBeavs%20-%20Infrastructure%20Trust%20Plane%20-%20Engineering%20Requirements%20-%20v2026-0423.md) -- Original pre-implementation specification. Describes the REST-based design that was later converted to pure A2A. Retained as a historical artifact; the current system is documented in How-Pairing-Works/.
 - [How-Pairing-Works/](How-Pairing-Works/) -- Per-entity pairing documentation. Overview and navigation (README.md), plus dedicated docs for registry builders, chris builders, cyrano builders, and an external builder welcome package. Replaces the earlier How-the-Handshake-Works.md with comprehensive per-entity coverage.
 
 ### Services

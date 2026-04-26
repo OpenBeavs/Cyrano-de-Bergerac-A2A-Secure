@@ -1,10 +1,10 @@
 # Cyrano Builder Welcome Package
 
-A quick-start guide for external teams building a Cyrano-type agent for the OpenBeavs system.
+A quick-start guide for external teams building a Cyrano-type agent for the CDB system.
 
 ## What you are building
 
-You are building an A2A server with an LLM (or other domain expertise) that registers with the OpenBeavs Agent Registry and proves its identity when challenged by Chris, the user-facing client.
+You are building an A2A server with an LLM (or other domain expertise) that registers with the Agent Registry and proves its identity when challenged by Chris, the user-facing client.
 
 Your agent needs two capabilities:
 
@@ -115,7 +115,7 @@ mount_pairing_responder(
 
 ### 4. Register with the admin team
 
-Contact the OpenBeavs admin team with:
+Contact the admin team with:
 
 - Your agent's name and description
 - Your agent's endpoint URL (the HTTPS address where your server will listen)
@@ -137,7 +137,7 @@ Set these in your environment or secrets management:
 |---|---|---|
 | Agent ID | e.g., `your-agent-001` | Provided by admin team |
 | Trust Badge | 64-character hex string | Provided by admin team |
-| Registry URL | e.g., `https://registry.openbeavs.example:8003` | Provided by admin team |
+| Registry URL | e.g., `https://registry.example:8003` | Provided by admin team |
 | CA cert path | Path to the TLS CA root certificate | Provided by admin team |
 
 Run your server with TLS. In development:

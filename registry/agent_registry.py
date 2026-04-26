@@ -527,9 +527,9 @@ class RegistryExecutor(AgentExecutor):
 #-----------------------------------------------------------------------------#
 
 agent_card = AgentCard(
-    name="openbeavs-registry",
+    name="cdb-registry",
     description=(
-        "OpenBeavs Agent Registry. Manages agent records "
+        "CDB Agent Registry. Manages agent records "
         "and mediates pairing."
     ),
     url="https://localhost:8003/",
