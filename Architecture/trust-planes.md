@@ -10,7 +10,7 @@ The Trust Planes model was developed to answer a practical question: when an age
 
 ### Architecture diagram
 
-The following diagram shows the three trust planes applied to a concrete scenario: a user accesses a health agent that handles protected health information (PHI). The diagram illustrates how actors within each plane produce the trust context consumed by actors in adjacent planes.
+The following diagram shows the three trust planes applied to a concrete scenario: a user accesses a Health Records Agent (HRA) that handles protected health information (PHI). The diagram illustrates how actors within each plane produce the trust context consumed by actors in adjacent planes.
 
 ```mermaid
 flowchart TB
@@ -28,9 +28,9 @@ flowchart TB
     
     subgraph AgentPlane["AGENT PLANE (Agent Identity & Access Control)"]
         Hub("Agent Hub<br/>(Routes Users to Agents)"):::component
-        BHA("Health Agent<br/>(Handles PHI)"):::component
-        Hub -->|"Route Request"| BHA
-        BHA -->|"Authorize User<br/>& Return Decision"| Hub
+        HRA("Health Records Agent (HRA)<br/>(Handles PHI)"):::component
+        Hub -->|"Route Request"| HRA
+        HRA -->|"Authorize User<br/>& Return Decision"| Hub
     end
     
     subgraph InfraPlane["INFRASTRUCTURE PLANE (Service Identity & Authorization)"]
@@ -38,12 +38,12 @@ flowchart TB
         MCP("MCP Server<br/>(PHI Access Layer)"):::component
         Hub -->|"Lookup Agent"| Registry
         Registry -.->|"Return Agent Record<br/>& Trust Status"| Hub
-        BHA -->|"mTLS-Authenticated Request"| MCP
-        MCP -->|"Authorize via<br/>Registry & mTLS"| BHA
+        HRA -->|"mTLS-Authenticated Request"| MCP
+        MCP -->|"Authorize via<br/>Registry & mTLS"| HRA
     end
     
     AuthAgent -.->|"Issues<br/>User Identity Token"| Hub
-    Hub -.->|"Provides Verified<br/>User Claims"| BHA
+    Hub -.->|"Provides Verified<br/>User Claims"| HRA
     
     class UserPlane,AgentPlane,InfraPlane plane
 ```
